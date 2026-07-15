@@ -51,6 +51,7 @@ export function codexAdapter(authMode: AuthMode, spec: AgentSelection): AgentAda
       });
 
       let interrupted = false;
+      let sessionLost = false;
 
       const done = new Promise<TurnResult>((resolve, reject) => {
         let threadId = opts.resumeSessionId;
@@ -72,7 +73,17 @@ export function codexAdapter(authMode: AuthMode, spec: AgentSelection): AgentAda
 
         const handleEvent = (event: Rec): void => {
           const id = event.thread_id ?? rec(event.thread).id ?? event.session_id;
-          if (typeof id === "string") threadId = id;
+          if (typeof id === "string") {
+            if (opts.resumeSessionId && id !== opts.resumeSessionId && !sessionLost) {
+              // Codex started a different thread than the one we asked it to
+              // resume — the old rollout is gone. Stop before tokens are spent;
+              // the engine rebuilds context from the transcript and retries.
+              sessionLost = true;
+              child.kill("SIGTERM");
+              return;
+            }
+            threadId = id;
+          }
 
           if (event.type === "error" && typeof event.message === "string") turnError = event.message;
           if (event.type === "turn.failed") {
@@ -118,7 +129,9 @@ export function codexAdapter(authMode: AuthMode, spec: AgentSelection): AgentAda
 
         child.on("error", reject);
         child.on("close", (code) => {
-          if (interrupted) {
+          if (sessionLost) {
+            resolve({ sessionId: undefined, interrupted: false, sessionLost: true });
+          } else if (interrupted) {
             // Codex persists its rollout incrementally, so the thread on disk
             // survives the kill and `codex exec resume` continues it.
             resolve({ sessionId: threadId, interrupted: true });

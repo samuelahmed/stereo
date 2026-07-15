@@ -630,6 +630,13 @@ button.new-thread:hover {
   padding: 2px 4px;
 }
 
+.notice-line {
+  font-size: 11.5px;
+  color: var(--text-2);
+  padding: 2px 4px;
+  font-style: italic;
+}
+
 .diff-line {
   font-size: 11.5px;
   color: var(--text-2);

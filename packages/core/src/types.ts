@@ -56,6 +56,7 @@ export type ThreadEvent =
   | { type: "tool"; name: string; detail: string }
   | { type: "turn-end"; usage: TokenUsage | null }
   | { type: "interrupted" }
+  | { type: "notice"; text: string }
   | { type: "error"; message: string }
   | { type: "diff"; stats: DiffStats; clean: boolean };
 

@@ -12,7 +12,7 @@ import type { AgentAdapter, TurnHandle } from "./adapters/types.js";
 import { claudeAdapter } from "./adapters/claude.js";
 import { codexAdapter } from "./adapters/codex.js";
 import { applyAuthModeToProcess } from "./adapters/env.js";
-import { buildForkBriefing, buildReviewBriefing } from "./briefing.js";
+import { buildForkBriefing, buildResumeBriefing, buildReviewBriefing } from "./briefing.js";
 import { diffStats, diffText } from "./git.js";
 import { ThreadStore } from "./store.js";
 
@@ -212,28 +212,47 @@ export class Engine extends EventEmitter {
 
     let turnUsage: TokenUsage | null = null;
     const adapter = makeAdapter(thread.agent, this.settings);
+    const callbacks = {
+      onDelta: (text: string) => this.emit("delta", { threadId: thread.id, text }),
+      onText: (text: string) => this.emitEvent(thread.id, { type: "agent-text", text }),
+      onTool: (name: string, detail: string) => this.emitEvent(thread.id, { type: "tool", name, detail }),
+      onUsage: (usage: TokenUsage) => {
+        turnUsage = usage;
+        thread.usage.inputTokens += usage.inputTokens;
+        thread.usage.outputTokens += usage.outputTokens;
+      },
+    };
     try {
-      const handle = adapter.startTurn(
-        prompt,
-        { cwd: thread.cwd, resumeSessionId: thread.sessionId },
-        {
-          onDelta: (text) => this.emit("delta", { threadId: thread.id, text }),
-          onText: (text) => this.emitEvent(thread.id, { type: "agent-text", text }),
-          onTool: (name, detail) => this.emitEvent(thread.id, { type: "tool", name, detail }),
-          onUsage: (usage) => {
-            turnUsage = usage;
-            thread.usage.inputTokens += usage.inputTokens;
-            thread.usage.outputTokens += usage.outputTokens;
-          },
-        },
-      );
-      this.turns.set(thread.id, handle);
-      const result = await handle.done;
-      if (result.sessionId) thread.sessionId = result.sessionId;
-      if (result.interrupted) {
-        this.emitEvent(thread.id, { type: "interrupted" });
-      } else {
-        this.emitEvent(thread.id, { type: "turn-end", usage: turnUsage });
+      let attemptPrompt = prompt;
+      let resume = thread.sessionId;
+      for (let attempt = 0; ; attempt++) {
+        const handle = adapter.startTurn(attemptPrompt, { cwd: thread.cwd, resumeSessionId: resume }, callbacks);
+        this.turns.set(thread.id, handle);
+        const result = await handle.done;
+        if (result.sessionLost && attempt === 0) {
+          // The CLI couldn't load its native session (it silently starts a
+          // fresh one instead). The transcript is the canonical record —
+          // rebuild the context from it and retry once without native resume.
+          this.emitEvent(thread.id, {
+            type: "notice",
+            text: "The CLI's native session couldn't be resumed — Stereo rebuilt the context from this thread's transcript and retried.",
+          });
+          const compiled = buildResumeBriefing(this.eventsFor(thread.id), {
+            fromAgent: thread.agent.agent,
+            cwd: thread.cwd,
+          });
+          attemptPrompt = compiled.text;
+          resume = undefined;
+          thread.sessionId = undefined;
+          continue;
+        }
+        if (result.sessionId) thread.sessionId = result.sessionId;
+        if (result.interrupted) {
+          this.emitEvent(thread.id, { type: "interrupted" });
+        } else {
+          this.emitEvent(thread.id, { type: "turn-end", usage: turnUsage });
+        }
+        break;
       }
     } catch (error) {
       this.emitEvent(thread.id, {

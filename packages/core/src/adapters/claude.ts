@@ -1,4 +1,4 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { AgentSelection } from "../types.js";
 import type { AgentAdapter, TurnCallbacks, TurnHandle, TurnOptions, TurnResult } from "./types.js";
 
@@ -40,29 +40,58 @@ export function claudeAdapter(spec: AgentSelection): AgentAdapter {
     agent: "claude",
     startTurn(prompt: string, opts: TurnOptions, cb: TurnCallbacks): TurnHandle {
       const abort = new AbortController();
+      let endInput: () => void = () => {};
+      const inputDone = new Promise<void>((resolve) => {
+        endInput = resolve;
+      });
+
+      // Streaming-input mode: the message goes out immediately, but the input
+      // stream stays open until the turn finishes. That is what makes the
+      // SDK's graceful interrupt() available — the same Esc the interactive
+      // CLI has — which finalizes the session file so the next turn can
+      // actually resume it. A hard abort mid-turn leaves a session the CLI
+      // silently refuses to resume.
+      async function* input(): AsyncGenerator<SDKUserMessage> {
+        yield { type: "user", message: { role: "user", content: prompt }, parent_tool_use_id: null } as SDKUserMessage;
+        await inputDone;
+      }
+
+      const q = query({
+        prompt: input(),
+        options: {
+          cwd: opts.cwd,
+          allowedTools: TOOLS,
+          permissionMode: "acceptEdits",
+          includePartialMessages: true,
+          abortController: abort,
+          ...(spec.model ? { model: spec.model } : {}),
+          ...(spec.effort ? { extraArgs: { effort: spec.effort } } : {}),
+          ...(opts.resumeSessionId ? { resume: opts.resumeSessionId } : {}),
+        },
+      });
+
+      let interruptRequested = false;
+      let sessionLost = false;
 
       const done = (async (): Promise<TurnResult> => {
         let sessionId = opts.resumeSessionId;
         try {
-          const stream = query({
-            prompt,
-            options: {
-              cwd: opts.cwd,
-              allowedTools: TOOLS,
-              permissionMode: "acceptEdits",
-              includePartialMessages: true,
-              abortController: abort,
-              ...(spec.model ? { model: spec.model } : {}),
-              ...(spec.effort ? { extraArgs: { effort: spec.effort } } : {}),
-              ...(opts.resumeSessionId ? { resume: opts.resumeSessionId } : {}),
-            },
-          });
-
-          for await (const raw of stream) {
+          for await (const raw of q) {
             const m = rec(raw);
 
             if (m.type === "system" && m.subtype === "init") {
-              if (typeof m.session_id === "string") sessionId = m.session_id;
+              const sid = typeof m.session_id === "string" ? m.session_id : undefined;
+              if (opts.resumeSessionId && sid && sid !== opts.resumeSessionId) {
+                // The CLI couldn't load the old session and silently started a
+                // fresh one instead of resuming. Bail out before tokens are
+                // spent — the engine rebuilds context from the transcript and
+                // retries.
+                sessionLost = true;
+                endInput();
+                abort.abort();
+                return { sessionId: undefined, interrupted: false, sessionLost: true };
+              }
+              if (sid) sessionId = sid;
               continue;
             }
 
@@ -103,18 +132,32 @@ export function claudeAdapter(spec: AgentSelection): AgentAdapter {
                 });
               }
               if (typeof m.session_id === "string") sessionId = m.session_id;
+              // Turn is complete — release the input stream so the CLI exits.
+              endInput();
             }
           }
-          return { sessionId, interrupted: false };
+          return { sessionId, interrupted: interruptRequested };
         } catch (error) {
-          // Esc-to-interrupt aborts the query; the CLI session on disk
-          // survives, so the next message resumes exactly where we stopped.
-          if (abort.signal.aborted) return { sessionId, interrupted: true };
+          if (sessionLost) return { sessionId: undefined, interrupted: false, sessionLost: true };
+          if (interruptRequested || abort.signal.aborted) return { sessionId, interrupted: true };
           throw error;
+        } finally {
+          endInput();
         }
       })();
 
-      return { interrupt: () => abort.abort(), done };
+      return {
+        interrupt: () => {
+          interruptRequested = true;
+          // Graceful interrupt keeps the session resumable; hard abort only if
+          // the control request itself fails (e.g. the process already died).
+          void q
+            .interrupt()
+            .catch(() => abort.abort())
+            .finally(() => endInput());
+        },
+        done,
+      };
     },
   };
 }

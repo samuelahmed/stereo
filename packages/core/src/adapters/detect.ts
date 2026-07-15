@@ -90,7 +90,18 @@ export async function detectCodex(): Promise<AgentStatusInfo> {
     installed: v !== null,
     version: v,
     auth,
-    models: catalog?.models ?? CODEX_MODELS,
+    // Live CLI catalog first, then any statically-known models it doesn't
+    // list — newly documented model IDs stay selectable when the installed
+    // CLI's catalog lags behind.
+    models: catalog ? mergeModels(catalog.models, CODEX_MODELS) : CODEX_MODELS,
     efforts: catalog?.efforts ?? CODEX_EFFORTS,
   };
+}
+
+function mergeModels(
+  live: { value: string | null; label: string }[],
+  fallback: { value: string | null; label: string }[],
+): { value: string | null; label: string }[] {
+  const seen = new Set(live.map((m) => m.value));
+  return [...live, ...fallback.filter((m) => !seen.has(m.value))];
 }

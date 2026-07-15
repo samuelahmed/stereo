@@ -48,6 +48,8 @@ function EventRow({ envelope, agent }: { envelope: EventEnvelope; agent: ThreadT
       );
     case "interrupted":
       return <div className="interrupt-line">◼ Interrupted — the session is intact, send a message to continue</div>;
+    case "notice":
+      return <div className="notice-line">⟳ {e.text}</div>;
     case "error":
       return <div className="error-card">{e.message}</div>;
     case "diff":

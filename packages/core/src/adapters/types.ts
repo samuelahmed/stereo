@@ -19,6 +19,8 @@ export interface TurnOptions {
 export interface TurnResult {
   sessionId?: string;
   interrupted: boolean;
+  /** The CLI could not load the resume session and would have started fresh. */
+  sessionLost?: boolean;
 }
 
 export interface TurnHandle {

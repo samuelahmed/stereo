@@ -100,6 +100,26 @@ export function buildForkBriefing(
   return { text, trimmedEvents: transcript.trimmedEvents, approxTokens: approxTokens(text.length) };
 }
 
+/**
+ * Briefing for continuing a thread whose native CLI session was lost — the
+ * second caller of the compiler. Same transcript, different wrapper: the
+ * agent answers the user's latest message instead of waiting for a new one.
+ */
+export function buildResumeBriefing(
+  events: EventEnvelope[],
+  opts: { fromAgent: AgentId; cwd: string },
+): CompiledBriefing {
+  const transcript = compileTranscript(events, opts.fromAgent, MAX_BRIEFING_CHARS - WRAPPER_RESERVE);
+  const text = [
+    `You are continuing an ongoing coding session, but the CLI's native session state could not be loaded, so the full session transcript is provided below instead. All work so far already exists in the working tree at ${opts.cwd} — read files there for ground truth; the transcript is context, the tree is authoritative.`,
+    `--- SESSION TRANSCRIPT ---`,
+    transcript.text,
+    `--- END TRANSCRIPT ---`,
+    `Respond to the user's most recent message in the transcript above.`,
+  ].join("\n\n");
+  return { text, trimmedEvents: transcript.trimmedEvents, approxTokens: approxTokens(text.length) };
+}
+
 const MAX_DIFF_CHARS_IN_BRIEFING = 200_000;
 
 /** Briefing for "review this thread's uncommitted work with another model". */
