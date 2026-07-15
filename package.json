@@ -1,0 +1,15 @@
+{
+  "name": "stereo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Every AI coding tool is mono. Stereo runs both frontier labs in one window.",
+  "scripts": {
+    "dev": "pnpm --filter @stereo/desktop dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@11.13.0"
+}

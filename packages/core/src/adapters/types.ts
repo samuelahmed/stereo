@@ -1,0 +1,33 @@
+import type { AgentId, TokenUsage } from "../types.js";
+
+export interface TurnCallbacks {
+  /** Ephemeral streaming text — rendered live, never persisted. */
+  onDelta(text: string): void;
+  /** A completed text block — persisted to the transcript. */
+  onText(text: string): void;
+  /** A tool invocation with human-readable detail (command, file path, …). */
+  onTool(name: string, detail: string): void;
+  /** Authoritative usage for the turn, reported once from the final result. */
+  onUsage(usage: TokenUsage): void;
+}
+
+export interface TurnOptions {
+  cwd: string;
+  resumeSessionId?: string;
+}
+
+export interface TurnResult {
+  sessionId?: string;
+  interrupted: boolean;
+}
+
+export interface TurnHandle {
+  /** Stop the turn at the next safe point. The session survives — resume works. */
+  interrupt(): void;
+  done: Promise<TurnResult>;
+}
+
+export interface AgentAdapter {
+  agent: AgentId;
+  startTurn(prompt: string, opts: TurnOptions, callbacks: TurnCallbacks): TurnHandle;
+}

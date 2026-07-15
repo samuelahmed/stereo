@@ -1,0 +1,36 @@
+import { contextBridge, ipcRenderer } from "electron";
+import type { AgentSelection, EventEnvelope, Settings, Thread } from "@stereo/core";
+
+const api = {
+  getSettings: () => ipcRenderer.invoke("settings:get"),
+  setSettings: (settings: Settings) => ipcRenderer.invoke("settings:set", settings),
+  detectAgents: () => ipcRenderer.invoke("agents:detect"),
+  pickDir: () => ipcRenderer.invoke("dir:pick"),
+  createThread: (input: { cwd: string; agent: AgentSelection }) => ipcRenderer.invoke("thread:create", input),
+  listThreads: () => ipcRenderer.invoke("thread:list"),
+  threadEvents: (threadId: string) => ipcRenderer.invoke("thread:events", threadId),
+  sendMessage: (threadId: string, text: string) => ipcRenderer.invoke("thread:send", threadId, text),
+  interrupt: (threadId: string) => ipcRenderer.invoke("thread:interrupt", threadId),
+  forkThread: (threadId: string, agent: AgentSelection) => ipcRenderer.invoke("thread:fork", threadId, agent),
+  reviewThread: (threadId: string, agent: AgentSelection) => ipcRenderer.invoke("thread:review", threadId, agent),
+  threadStats: (threadId: string) => ipcRenderer.invoke("thread:stats", threadId),
+  onEvent: (handler: (envelope: EventEnvelope) => void) => {
+    const listener = (_e: unknown, envelope: EventEnvelope) => handler(envelope);
+    ipcRenderer.on("stereo:event", listener);
+    return () => ipcRenderer.removeListener("stereo:event", listener);
+  },
+  onDelta: (handler: (delta: { threadId: string; text: string }) => void) => {
+    const listener = (_e: unknown, delta: { threadId: string; text: string }) => handler(delta);
+    ipcRenderer.on("stereo:delta", listener);
+    return () => ipcRenderer.removeListener("stereo:delta", listener);
+  },
+  onThreads: (handler: (threads: Thread[]) => void) => {
+    const listener = (_e: unknown, threads: Thread[]) => handler(threads);
+    ipcRenderer.on("stereo:threads", listener);
+    return () => ipcRenderer.removeListener("stereo:threads", listener);
+  },
+};
+
+contextBridge.exposeInMainWorld("stereo", api);
+
+export type StereoApi = typeof api;
