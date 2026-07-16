@@ -1,4 +1,4 @@
-import type { AgentSelection, Attachment } from "@stereo/core";
+import type { AgentSelection, Attachment, PermissionMode } from "@stereo/core";
 import { shortPath } from "../labels";
 import { AgentPicker, type AgentCatalog } from "./AgentPicker";
 import { Composer } from "./Composer";
@@ -7,14 +7,16 @@ interface Props {
   cwd: string | null;
   recentDirs: string[];
   agent: AgentSelection;
+  permission: PermissionMode;
   agents: AgentCatalog;
   onPickDir(): void;
   onUseDir(dir: string): void;
   onAgentChange(agent: AgentSelection): void;
+  onPermissionChange(permission: PermissionMode): void;
   onSubmit(text: string, attachments: Attachment[]): boolean | Promise<boolean>;
 }
 
-export function NewThread({ cwd, recentDirs, agent, agents, onPickDir, onUseDir, onAgentChange, onSubmit }: Props) {
+export function NewThread({ cwd, recentDirs, agent, permission, agents, onPickDir, onUseDir, onAgentChange, onPermissionChange, onSubmit }: Props) {
   const unavailable = agents ? !agents[agent.agent].installed : false;
   return (
     <>
@@ -39,6 +41,14 @@ export function NewThread({ cwd, recentDirs, agent, agents, onPickDir, onUseDir,
                   {shortPath(d)}
                 </button>
               ))}
+          </div>
+          <div className="config-row">
+            <span className="config-label">Access</span>
+            <select className="config-select" value={permission} onChange={(event) => onPermissionChange(event.target.value as PermissionMode)}>
+              <option value="workspace-write">Workspace write</option>
+              <option value="read-only">Read only</option>
+            </select>
+            <span className="config-help">Can be changed later per thread</span>
           </div>
           <div className="config-row">
             <span className="config-label">Agent</span>

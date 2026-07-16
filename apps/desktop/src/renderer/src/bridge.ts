@@ -4,6 +4,7 @@ import type {
   AgentStatusInfo,
   DiffStats,
   EventEnvelope,
+  QueuedMessage,
   Settings,
   Thread,
   ThreadEvent,
@@ -17,7 +18,9 @@ export interface StereoApi {
   pickDir(): Promise<string | null>;
   openDir(directory: string): Promise<void>;
   pathForFile(file: File): string;
-  createThread(input: { cwd: string; agent: AgentSelection }): Promise<Thread>;
+  previewFile(filePath: string): Promise<string | null>;
+  createThread(input: { cwd: string; agent: AgentSelection; permission?: Thread["permission"] }): Promise<Thread>;
+  setThreadPermission(threadId: string, permission: Thread["permission"]): Promise<Thread>;
   renameThread(threadId: string, title: string): Promise<Thread>;
   deleteThread(threadId: string): Promise<void>;
   listThreads(): Promise<Thread[]>;
@@ -27,9 +30,13 @@ export interface StereoApi {
   forkThread(threadId: string, agent: AgentSelection): Promise<Thread>;
   reviewThread(threadId: string, agent: AgentSelection): Promise<Thread>;
   threadStats(threadId: string): Promise<DiffStats | null>;
+  threadQueue(threadId: string): Promise<QueuedMessage[]>;
+  removeQueued(threadId: string, messageId: string): Promise<void>;
+  moveQueued(threadId: string, messageId: string, direction: -1 | 1): Promise<void>;
   onEvent(handler: (envelope: EventEnvelope) => void): () => void;
   onDelta(handler: (delta: { threadId: string; text: string }) => void): () => void;
   onThreads(handler: (threads: Thread[]) => void): () => void;
+  onQueue(handler: (payload: { threadId: string; queue: QueuedMessage[] }) => void): () => void;
 }
 
 declare global {
@@ -56,6 +63,8 @@ function createMock(): StereoApi {
   let settings: Settings = {
     authMode: "subscription",
     defaultAgent: { agent: "claude", model: null, effort: null },
+    defaultPermission: "workspace-write",
+    notifyOnComplete: false,
   };
   const threads = new Map<string, Thread>();
   const events = new Map<string, EventEnvelope[]>();
@@ -75,7 +84,7 @@ function createMock(): StereoApi {
   };
   const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-  const makeThread = (cwd: string, agent: AgentSelection): Thread => {
+  const makeThread = (cwd: string, agent: AgentSelection, permission = settings.defaultPermission): Thread => {
     const id = `mock-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
     const now = new Date().toISOString();
     const thread: Thread = {
@@ -84,6 +93,7 @@ function createMock(): StereoApi {
       cwd,
       kind: "chat",
       agent,
+      permission,
       status: "idle",
       createdAt: now,
       updatedAt: now,
@@ -148,10 +158,18 @@ function createMock(): StereoApi {
     pickDir: async () => "/Users/you/acme-app",
     openDir: async () => undefined,
     pathForFile: (file) => file.webkitRelativePath || file.name,
-    createThread: async ({ cwd, agent }) => {
-      const t = makeThread(cwd, agent);
+    previewFile: async () => null,
+    createThread: async ({ cwd, agent, permission }) => {
+      const t = makeThread(cwd, agent, permission);
       pushThreads();
       return t;
+    },
+    setThreadPermission: async (threadId, permission) => {
+      const thread = threads.get(threadId);
+      if (!thread) throw new Error(`Unknown thread ${threadId}`);
+      thread.permission = permission;
+      pushThreads();
+      return thread;
     },
     renameThread: async (threadId, title) => {
       const thread = threads.get(threadId);
@@ -217,6 +235,9 @@ function createMock(): StereoApi {
       return t;
     },
     threadStats: async () => ({ filesChanged: 2, additions: 48, deletions: 12 }),
+    threadQueue: async () => [],
+    removeQueued: async () => undefined,
+    moveQueued: async () => undefined,
     onEvent: (h) => {
       eventHandlers.add(h);
       return () => eventHandlers.delete(h);
@@ -229,6 +250,7 @@ function createMock(): StereoApi {
       threadHandlers.add(h);
       return () => threadHandlers.delete(h);
     },
+    onQueue: () => () => undefined,
   };
 }
 

@@ -1,5 +1,5 @@
 import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
-import type { AgentSelection } from "../types.js";
+import type { AgentSelection, PermissionMode } from "../types.js";
 import type { AgentAdapter, TurnCallbacks, TurnHandle, TurnOptions, TurnResult } from "./types.js";
 
 type Rec = Record<string, unknown>;
@@ -35,7 +35,7 @@ function toolDetail(name: string, input: unknown): string {
   }
 }
 
-export function claudeAdapter(spec: AgentSelection): AgentAdapter {
+export function claudeAdapter(spec: AgentSelection, permission: PermissionMode): AgentAdapter {
   return {
     agent: "claude",
     startTurn(prompt: string, opts: TurnOptions, cb: TurnCallbacks): TurnHandle {
@@ -61,7 +61,7 @@ export function claudeAdapter(spec: AgentSelection): AgentAdapter {
         options: {
           cwd: opts.cwd,
           allowedTools: TOOLS,
-          permissionMode: "acceptEdits",
+          permissionMode: permission === "read-only" ? "plan" : "acceptEdits",
           includePartialMessages: true,
           abortController: abort,
           ...(spec.model ? { model: spec.model } : {}),

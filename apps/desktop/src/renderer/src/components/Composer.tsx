@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import type { Attachment } from "@stereo/core";
 import { stereo } from "../bridge";
+import { AttachmentPreview } from "./AttachmentPreview";
 
 interface Props {
   draftKey: string;
@@ -26,10 +27,6 @@ function loadAttachments(key: string): Attachment[] {
   } catch {
     return [];
   }
-}
-
-function isImage(attachment: Attachment): boolean {
-  return attachment.mimeType.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg|heic)$/i.test(attachment.name);
 }
 
 /** A durable, auto-growing composer with local file references as agent context. */
@@ -147,9 +144,7 @@ export function Composer({ draftKey, placeholder, running, disabled = false, onS
           <div className="attachment-list" aria-label="Attached files">
             {attachments.map((attachment) => (
               <div className="attachment-chip" key={attachment.path} title={attachment.path}>
-                <span className={`attachment-kind ${isImage(attachment) ? "image" : "file"}`} aria-hidden="true">
-                  {isImage(attachment) ? "▧" : "◇"}
-                </span>
+                <AttachmentPreview attachment={attachment} />
                 <span className="attachment-name">{attachment.name}</span>
                 <button
                   type="button"

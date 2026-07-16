@@ -8,10 +8,13 @@ export interface AgentSelection {
 }
 
 export type AuthMode = "subscription" | "api-key";
+export type PermissionMode = "read-only" | "workspace-write";
 
 export interface Settings {
   authMode: AuthMode;
   defaultAgent: AgentSelection;
+  defaultPermission: PermissionMode;
+  notifyOnComplete: boolean;
 }
 
 export type ThreadKind = "chat" | "review";
@@ -36,6 +39,13 @@ export interface Attachment {
   size: number;
 }
 
+export interface QueuedMessage {
+  id: string;
+  text: string;
+  attachments: Attachment[];
+  createdAt: string;
+}
+
 /**
  * A thread is a terminal session that never dies: one agent, one working
  * directory, a permanent transcript. The vendor session id is only an
@@ -47,6 +57,7 @@ export interface Thread {
   cwd: string;
   kind: ThreadKind;
   agent: AgentSelection;
+  permission: PermissionMode;
   status: ThreadStatus;
   createdAt: string;
   updatedAt: string;

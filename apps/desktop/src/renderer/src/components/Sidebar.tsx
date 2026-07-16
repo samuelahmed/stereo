@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AgentStatusInfo, Settings, Thread } from "@stereo/core";
 import { AGENT_NAME, shortPath, timeAgo } from "../labels";
+import { AgentPicker } from "./AgentPicker";
 
 interface Props {
   threads: Thread[];
   selectedId: string | null;
+  unreadIds: Set<string>;
   agents: { claude: AgentStatusInfo; codex: AgentStatusInfo } | null;
   settings: Settings | null;
   width: number;
@@ -13,7 +15,7 @@ interface Props {
   onRename(thread: Thread, title: string): Promise<void>;
   onDelete(thread: Thread): Promise<void>;
   onOpenDirectory(thread: Thread): Promise<void>;
-  onAuthModeChange(mode: Settings["authMode"]): void;
+  onSettingsChange(settings: Settings): void;
 }
 
 type ThreadAction = { kind: "rename" | "delete"; thread: Thread } | null;
@@ -22,6 +24,7 @@ type ContextMenu = { thread: Thread; x: number; y: number } | null;
 export function Sidebar({
   threads,
   selectedId,
+  unreadIds,
   agents,
   settings,
   width,
@@ -30,10 +33,11 @@ export function Sidebar({
   onRename,
   onDelete,
   onOpenDirectory,
-  onAuthModeChange,
+  onSettingsChange,
 }: Props) {
   const [query, setQuery] = useState("");
   const [contextMenu, setContextMenu] = useState<ContextMenu>(null);
+  const [mainMenu, setMainMenu] = useState(false);
   const [action, setAction] = useState<ThreadAction>(null);
   const [title, setTitle] = useState("");
   const [pending, setPending] = useState(false);
@@ -51,7 +55,10 @@ export function Sidebar({
   }, [query, threads]);
 
   useEffect(() => {
-    const dismiss = () => setContextMenu(null);
+    const dismiss = () => {
+      setContextMenu(null);
+      setMainMenu(false);
+    };
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
@@ -61,7 +68,10 @@ export function Sidebar({
         event.preventDefault();
         onSelect(null);
       }
-      if (event.key === "Escape") setContextMenu(null);
+      if (event.key === "Escape") {
+        setContextMenu(null);
+        setMainMenu(false);
+      }
     };
     window.addEventListener("pointerdown", dismiss);
     window.addEventListener("keydown", onKeyDown);
@@ -169,6 +179,7 @@ export function Sidebar({
               <span className="thread-title">
                 <span className={`status-dot ${thread.agent.agent} ${thread.status === "running" ? "pulse" : ""}`} />
                 <span>{thread.title}</span>
+                {unreadIds.has(thread.id) && <span className="unread-dot" title="Unread completion" />}
               </span>
               <span className="meta">
                 {thread.kind === "review" && <span className="kind-badge">review</span>}
@@ -197,28 +208,64 @@ export function Sidebar({
         )}
       </div>
       <div className="sidebar-footer">
-        {agents ? (
-          (["claude", "codex"] as const).map((id) => {
-            const agent = agents[id];
-            return (
-              <div key={id} className="agent-badge">
-                <span className={`status-dot ${id}`} style={{ opacity: agent.installed ? 1 : 0.25 }} />
-                <span>{AGENT_NAME[id]}</span>
-                <span className="dim">{agent.installed ? (agent.auth ?? "ready") : "not installed"}</span>
-              </div>
-            );
-          })
-        ) : (
-          <div className="sidebar-loading">Checking local agents…</div>
-        )}
-        {settings && (
-          <label className="auth-toggle">
-            <span>Billing</span>
-            <select value={settings.authMode} onChange={(event) => onAuthModeChange(event.target.value as Settings["authMode"])}>
-              <option value="subscription">Subscription</option>
-              <option value="api-key">API key</option>
-            </select>
-          </label>
+        <button
+          className="main-menu-button"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            setMainMenu((open) => !open);
+          }}
+        >
+          <span className="menu-status-dots">
+            <span className="status-dot claude" />
+            <span className="status-dot codex" />
+          </span>
+          <span>Menu & settings</span>
+          <span className="main-menu-chevron">⌃</span>
+        </button>
+        {mainMenu && settings && (
+          <div className="main-menu" onPointerDown={(event) => event.stopPropagation()}>
+            <div className="main-menu-heading">Stereo</div>
+            <button className="main-menu-action" onClick={() => { onSelect(null); setMainMenu(false); }}>
+              <span>New thread</span><kbd>⌘N</kbd>
+            </button>
+            <div className="main-menu-section">
+              <div className="main-menu-label">Default harness</div>
+              <AgentPicker value={settings.defaultAgent} onChange={(defaultAgent) => onSettingsChange({ ...settings, defaultAgent })} agents={agents} />
+            </div>
+            <div className="main-menu-section harness-status">
+              <div className="main-menu-label">Harnesses</div>
+              {agents ? (["claude", "codex"] as const).map((id) => (
+                <div className="main-menu-status" key={id}>
+                  <span className={`status-dot ${id}`} style={{ opacity: agents[id].installed ? 1 : 0.25 }} />
+                  <span>{AGENT_NAME[id]}</span>
+                  <span>{agents[id].installed ? agents[id].auth ?? "Ready" : "Not installed"}</span>
+                </div>
+              )) : <div className="sidebar-loading">Checking local agents…</div>}
+            </div>
+            <div className="main-menu-section menu-form">
+              <label>
+                <span>Billing</span>
+                <select value={settings.authMode} onChange={(event) => onSettingsChange({ ...settings, authMode: event.target.value as Settings["authMode"] })}>
+                  <option value="subscription">Subscription</option>
+                  <option value="api-key">API key</option>
+                </select>
+              </label>
+              <label>
+                <span>Default access</span>
+                <select value={settings.defaultPermission} onChange={(event) => onSettingsChange({ ...settings, defaultPermission: event.target.value as Settings["defaultPermission"] })}>
+                  <option value="workspace-write">Workspace write</option>
+                  <option value="read-only">Read only</option>
+                </select>
+              </label>
+              <label className="menu-checkbox">
+                <span>Completion notifications</span>
+                <input type="checkbox" checked={settings.notifyOnComplete} onChange={(event) => onSettingsChange({ ...settings, notifyOnComplete: event.target.checked })} />
+              </label>
+            </div>
+            <div className="permission-note">Workspace write lets the harness edit this checkout. Read only is best for reviews and planning.</div>
+            <div className="main-menu-shortcuts"><span>Search threads</span><kbd>⌘K</kbd><span>Interrupt</span><kbd>Esc</kbd></div>
+          </div>
         )}
       </div>
 

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import type { AgentSelection, AuthMode, TokenUsage } from "../types.js";
+import type { AgentSelection, AuthMode, PermissionMode, TokenUsage } from "../types.js";
 import type { AgentAdapter, TurnCallbacks, TurnHandle, TurnOptions, TurnResult } from "./types.js";
 import { childEnv } from "./env.js";
 
@@ -34,12 +34,12 @@ function itemDetail(item: Rec): string {
  * token-level deltas — item-level events are its native liveness, same as its
  * own CLI shows.
  */
-export function codexAdapter(authMode: AuthMode, spec: AgentSelection): AgentAdapter {
+export function codexAdapter(authMode: AuthMode, spec: AgentSelection, permission: PermissionMode): AgentAdapter {
   return {
     agent: "codex",
     startTurn(prompt: string, opts: TurnOptions, cb: TurnCallbacks): TurnHandle {
       const base = ["exec", "--json", "--color", "never", "-C", opts.cwd, "--skip-git-repo-check", ...specArgs(spec)];
-      const sandbox = ["-s", "workspace-write"];
+      const sandbox = ["-s", permission === "read-only" ? "read-only" : "workspace-write"];
       const args = opts.resumeSessionId
         ? [...base, ...sandbox, "resume", opts.resumeSessionId, prompt]
         : [...base, ...sandbox, prompt];

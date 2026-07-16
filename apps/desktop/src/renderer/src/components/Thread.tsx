@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import type { AgentId, EventEnvelope, Thread as ThreadT } from "@stereo/core";
 import { AGENT_NAME, formatTokens } from "../labels";
 import { Markdown } from "./Markdown";
+import { AttachmentPreview } from "./AttachmentPreview";
 
 interface Props {
   thread: ThreadT;
@@ -82,7 +83,7 @@ function EventRow({ envelope, agent }: { envelope: EventEnvelope; agent: AgentId
               <div className="message-attachments">
                 {e.attachments.map((attachment) => (
                   <div className="message-attachment" key={attachment.path} title={attachment.path}>
-                    <span aria-hidden="true">{attachment.mimeType.startsWith("image/") ? "▧" : "◇"}</span>
+                    <AttachmentPreview attachment={attachment} />
                     <span>{attachment.name}</span>
                   </div>
                 ))}

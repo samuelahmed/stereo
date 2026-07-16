@@ -4,6 +4,7 @@ import type {
   AgentSelection,
   Attachment,
   EventEnvelope,
+  QueuedMessage,
   Settings,
   Thread,
   ThreadEvent,
@@ -19,18 +20,16 @@ import { ThreadStore } from "./store.js";
 
 const MAX_REVIEW_DIFF_CHARS = 200_000;
 
-function makeAdapter(agent: AgentSelection, settings: Settings): AgentAdapter {
-  return agent.agent === "claude" ? claudeAdapter(agent) : codexAdapter(settings.authMode, agent);
+function makeAdapter(thread: Thread, settings: Settings): AgentAdapter {
+  return thread.agent.agent === "claude"
+    ? claudeAdapter(thread.agent, thread.permission)
+    : codexAdapter(settings.authMode, thread.agent, thread.permission);
 }
 
 export interface CreateThreadInput {
   cwd: string;
   agent: AgentSelection;
-}
-
-interface PendingMessage {
-  text: string;
-  attachments: Attachment[];
+  permission?: Thread["permission"];
 }
 
 function promptWithAttachments(text: string, attachments: Attachment[]): string {
@@ -57,13 +56,14 @@ function promptWithAttachments(text: string, attachments: Attachment[]): string 
  *  - "event"   (EventEnvelope)          persisted transcript events
  *  - "delta"   ({threadId, text})       ephemeral streaming text
  *  - "threads" (Thread[])               metadata changes (status, title, usage)
+ *  - "queue"   ({threadId, queue})      pending queued messages changed
  */
 export class Engine extends EventEmitter {
   private threads = new Map<string, Thread>();
   private seq = new Map<string, number>();
   private store: ThreadStore;
   private turns = new Map<string, TurnHandle>();
-  private queues = new Map<string, PendingMessage[]>();
+  private queues = new Map<string, QueuedMessage[]>();
 
   constructor(
     private settings: Settings,
@@ -75,6 +75,7 @@ export class Engine extends EventEmitter {
 
     const crashed: string[] = [];
     for (const thread of this.store.loadThreads()) {
+      thread.permission ??= this.settings.defaultPermission;
       this.threads.set(thread.id, thread);
       this.seq.set(thread.id, this.store.lastSeq(thread.id));
       if (thread.status === "running") {
@@ -109,6 +110,7 @@ export class Engine extends EventEmitter {
       cwd: input.cwd,
       kind: "chat",
       agent: input.agent,
+      permission: input.permission ?? this.settings.defaultPermission,
       status: "idle",
       createdAt: now,
       updatedAt: now,
@@ -125,6 +127,15 @@ export class Engine extends EventEmitter {
     const trimmed = title.trim();
     if (!trimmed) throw new Error("Thread title cannot be empty");
     thread.title = trimmed.slice(0, 120);
+    thread.updatedAt = new Date().toISOString();
+    this.persist();
+    return thread;
+  }
+
+  setThreadPermission(threadId: string, permission: Thread["permission"]): Thread {
+    const thread = this.threads.get(threadId);
+    if (!thread) throw new Error(`Unknown thread ${threadId}`);
+    thread.permission = permission;
     thread.updatedAt = new Date().toISOString();
     this.persist();
     return thread;
@@ -147,13 +158,35 @@ export class Engine extends EventEmitter {
    * Send a message. Messages queue like they do in the CLIs: if a turn is
    * running, the message waits and runs next.
    */
-  sendMessage(threadId: string, text: string, attachments: Attachment[] = []): void {
+  sendMessage(threadId: string, text: string, attachments: Attachment[] = []): QueuedMessage {
     const thread = this.threads.get(threadId);
     if (!thread) throw new Error(`Unknown thread ${threadId}`);
     const queue = this.queues.get(threadId) ?? [];
-    queue.push({ text, attachments });
+    const message: QueuedMessage = { id: crypto.randomUUID(), text, attachments, createdAt: new Date().toISOString() };
+    queue.push(message);
     this.queues.set(threadId, queue);
+    this.emitQueue(threadId);
     void this.pump(threadId);
+    return message;
+  }
+
+  queuedFor(threadId: string): QueuedMessage[] {
+    return [...(this.queues.get(threadId) ?? [])];
+  }
+
+  removeQueued(threadId: string, messageId: string): void {
+    const queue = this.queues.get(threadId) ?? [];
+    this.queues.set(threadId, queue.filter((message) => message.id !== messageId));
+    this.emitQueue(threadId);
+  }
+
+  moveQueued(threadId: string, messageId: string, direction: -1 | 1): void {
+    const queue = this.queues.get(threadId) ?? [];
+    const from = queue.findIndex((message) => message.id === messageId);
+    const to = from + direction;
+    if (from < 0 || to < 0 || to >= queue.length) return;
+    [queue[from], queue[to]] = [queue[to]!, queue[from]!];
+    this.emitQueue(threadId);
   }
 
   interrupt(threadId: string): void {
@@ -168,7 +201,7 @@ export class Engine extends EventEmitter {
       fromAgent: source.agent.agent,
       cwd: source.cwd,
     });
-    const thread = this.createThread({ cwd: source.cwd, agent });
+    const thread = this.createThread({ cwd: source.cwd, agent, permission: source.permission });
     thread.title = source.title === "New thread" ? "New thread" : `⑂ ${source.title}`;
     thread.forkedFrom = { threadId: source.id, title: source.title };
     thread.pendingBriefing = compiled.text;
@@ -191,7 +224,7 @@ export class Engine extends EventEmitter {
       fromAgent: source.agent.agent,
       cwd: source.cwd,
     });
-    const thread = this.createThread({ cwd: source.cwd, agent });
+    const thread = this.createThread({ cwd: source.cwd, agent, permission: source.permission });
     thread.kind = "review";
     thread.title = `Review: ${source.title}`;
     thread.forkedFrom = { threadId: source.id, title: source.title };
@@ -230,11 +263,16 @@ export class Engine extends EventEmitter {
     this.emit("threads", this.listThreads());
   }
 
+  private emitQueue(threadId: string): void {
+    this.emit("queue", { threadId, queue: this.queuedFor(threadId) });
+  }
+
   private async pump(threadId: string): Promise<void> {
     const thread = this.threads.get(threadId);
     if (!thread || thread.status === "running") return;
     const next = this.queues.get(threadId)?.shift();
     if (next === undefined) return;
+    this.emitQueue(threadId);
 
     if (thread.title === "New thread") {
       thread.title = (next.text.trim() || next.attachments[0]?.name || "New thread").split("\n")[0]!.slice(0, 80);
@@ -256,7 +294,7 @@ export class Engine extends EventEmitter {
     this.persist();
 
     let turnUsage: TokenUsage | null = null;
-    const adapter = makeAdapter(thread.agent, this.settings);
+    const adapter = makeAdapter(thread, this.settings);
     const callbacks = {
       onDelta: (text: string) => this.emit("delta", { threadId: thread.id, text }),
       onText: (text: string) => this.emitEvent(thread.id, { type: "agent-text", text }),

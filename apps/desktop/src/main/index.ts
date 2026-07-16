@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 import {
@@ -8,6 +8,7 @@ import {
   type AgentSelection,
   type Attachment,
   type EventEnvelope,
+  type QueuedMessage,
   type Settings,
   type Thread,
 } from "@stereo/core";
@@ -15,6 +16,8 @@ import {
 const DEFAULT_SETTINGS: Settings = {
   authMode: "subscription",
   defaultAgent: { agent: "claude", model: null, effort: null },
+  defaultPermission: "workspace-write",
+  notifyOnComplete: false,
 };
 
 function settingsPath(): string {
@@ -75,9 +78,21 @@ function createWindow(): void {
 void app.whenReady().then(() => {
   const settings = loadSettings();
   engine = new Engine(settings, path.join(app.getPath("userData"), "data"));
-  engine.on("event", (envelope: EventEnvelope) => win?.webContents.send("stereo:event", envelope));
+  engine.on("event", (envelope: EventEnvelope) => {
+    win?.webContents.send("stereo:event", envelope);
+    if (envelope.event.type === "turn-end" && loadSettings().notifyOnComplete && !win?.isFocused() && Notification.isSupported()) {
+      const thread = engine.listThreads().find((candidate) => candidate.id === envelope.threadId);
+      const notification = new Notification({ title: thread?.title ?? "Stereo", body: `${thread?.agent.agent === "codex" ? "Codex" : "Claude"} finished working` });
+      notification.on("click", () => {
+        win?.show();
+        win?.focus();
+      });
+      notification.show();
+    }
+  });
   engine.on("delta", (delta: { threadId: string; text: string }) => win?.webContents.send("stereo:delta", delta));
   engine.on("threads", (threads: Thread[]) => win?.webContents.send("stereo:threads", threads));
+  engine.on("queue", (payload: { threadId: string; queue: QueuedMessage[] }) => win?.webContents.send("stereo:queue", payload));
 
   ipcMain.handle("settings:get", () => loadSettings());
   ipcMain.handle("settings:set", (_e, next: Settings) => {
@@ -98,8 +113,25 @@ void app.whenReady().then(() => {
     const error = await shell.openPath(directory);
     if (error) throw new Error(error);
   });
+  ipcMain.handle("file:preview", async (_e, filePath: string) => {
+    const mimeByExtension: Record<string, string> = {
+      ".png": "image/png",
+      ".jpg": "image/jpeg",
+      ".jpeg": "image/jpeg",
+      ".gif": "image/gif",
+      ".webp": "image/webp",
+      ".svg": "image/svg+xml",
+    };
+    const mime = mimeByExtension[path.extname(filePath).toLowerCase()];
+    if (!mime) return null;
+    const stat = await fs.promises.stat(filePath);
+    if (!stat.isFile() || stat.size > 15 * 1024 * 1024) return null;
+    const data = await fs.promises.readFile(filePath);
+    return `data:${mime};base64,${data.toString("base64")}`;
+  });
 
-  ipcMain.handle("thread:create", (_e, input: { cwd: string; agent: AgentSelection }) => engine.createThread(input));
+  ipcMain.handle("thread:create", (_e, input: { cwd: string; agent: AgentSelection; permission?: Thread["permission"] }) => engine.createThread(input));
+  ipcMain.handle("thread:permission", (_e, threadId: string, permission: Thread["permission"]) => engine.setThreadPermission(threadId, permission));
   ipcMain.handle("thread:rename", (_e, threadId: string, title: string) => engine.renameThread(threadId, title));
   ipcMain.handle("thread:delete", (_e, threadId: string) => engine.deleteThread(threadId));
   ipcMain.handle("thread:list", () => engine.listThreads());
@@ -111,6 +143,11 @@ void app.whenReady().then(() => {
   ipcMain.handle("thread:fork", (_e, threadId: string, agent: AgentSelection) => engine.forkThread(threadId, agent));
   ipcMain.handle("thread:review", (_e, threadId: string, agent: AgentSelection) => engine.reviewThread(threadId, agent));
   ipcMain.handle("thread:stats", (_e, threadId: string) => engine.stats(threadId));
+  ipcMain.handle("thread:queue", (_e, threadId: string) => engine.queuedFor(threadId));
+  ipcMain.handle("thread:queue:remove", (_e, threadId: string, messageId: string) => engine.removeQueued(threadId, messageId));
+  ipcMain.handle("thread:queue:move", (_e, threadId: string, messageId: string, direction: -1 | 1) =>
+    engine.moveQueued(threadId, messageId, direction),
+  );
 
   createWindow();
 

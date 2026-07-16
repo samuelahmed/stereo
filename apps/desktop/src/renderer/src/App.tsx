@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AgentSelection, AgentStatusInfo, Attachment, DiffStats, EventEnvelope, Settings, Thread as ThreadT } from "@stereo/core";
+import type { AgentSelection, AgentStatusInfo, Attachment, DiffStats, EventEnvelope, PermissionMode, QueuedMessage, Settings, Thread as ThreadT } from "@stereo/core";
 import { bridgeFailed, isMock, stereo } from "./bridge";
 import { AGENT_NAME, agentSummary, formatTokens, otherAgent, shortPath } from "./labels";
 import { AgentPicker } from "./components/AgentPicker";
 import { Composer } from "./components/Composer";
 import { NewThread } from "./components/NewThread";
+import { QueueList } from "./components/QueueList";
 import { Sidebar } from "./components/Sidebar";
 import { Thread } from "./components/Thread";
 
@@ -36,23 +37,29 @@ export function App() {
   const [eventsByThread, setEventsByThread] = useState<Record<string, EventEnvelope[]>>({});
   const [liveByThread, setLiveByThread] = useState<Record<string, string>>({});
   const [statsByThread, setStatsByThread] = useState<Record<string, DiffStats | null>>({});
+  const [queueByThread, setQueueByThread] = useState<Record<string, QueuedMessage[]>>({});
+  const [unreadIds, setUnreadIds] = useState<Set<string>>(() => new Set());
   const [agents, setAgents] = useState<Catalog>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [recentDirs, setRecentDirs] = useState<string[]>(loadRecentDirs());
   const [draftCwd, setDraftCwd] = useState<string | null>(recentDirs[0] ?? null);
   const [draftAgent, setDraftAgent] = useState<AgentSelection>({ agent: "claude", model: null, effort: null });
+  const [draftPermission, setDraftPermission] = useState<PermissionMode>("workspace-write");
   const [menu, setMenu] = useState<"fork" | "review" | null>(null);
   const [menuAgent, setMenuAgent] = useState<AgentSelection>({ agent: "codex", model: null, effort: null });
 
   const selected = useMemo(() => threads.find((t) => t.id === selectedId) ?? null, [threads, selectedId]);
   const selectedRef = useRef<ThreadT | null>(null);
   selectedRef.current = selected;
+  const selectedIdRef = useRef<string | null>(null);
+  selectedIdRef.current = selectedId;
 
   useEffect(() => {
     void Promise.all([
       stereo.getSettings().then((s) => {
         setSettings(s);
         setDraftAgent(s.defaultAgent);
+        setDraftPermission(s.defaultPermission);
       }),
       stereo.detectAgents().then(setAgents),
       stereo.listThreads().then((loaded) => {
@@ -86,14 +93,22 @@ export function App() {
         const stats = envelope.event.stats;
         setStatsByThread((prev) => ({ ...prev, [envelope.threadId]: stats }));
       }
+      if (["turn-end", "interrupted", "error"].includes(envelope.event.type) &&
+        (selectedIdRef.current !== envelope.threadId || document.visibilityState === "hidden")) {
+        setUnreadIds((previous) => new Set(previous).add(envelope.threadId));
+      }
     });
     const offDelta = stereo.onDelta(({ threadId, text }) => {
       setLiveByThread((prev) => ({ ...prev, [threadId]: (prev[threadId] ?? "") + text }));
+    });
+    const offQueue = stereo.onQueue(({ threadId, queue }) => {
+      setQueueByThread((previous) => ({ ...previous, [threadId]: queue }));
     });
     return () => {
       offThreads();
       offEvent();
       offDelta();
+      offQueue();
     };
   }, []);
 
@@ -102,6 +117,25 @@ export function App() {
     const timer = window.setTimeout(() => setAppError(null), 5000);
     return () => window.clearTimeout(timer);
   }, [appError]);
+
+  useEffect(() => {
+    const clearVisible = () => {
+      const id = selectedIdRef.current;
+      if (!id) return;
+      setUnreadIds((previous) => {
+        if (!previous.has(id)) return previous;
+        const next = new Set(previous);
+        next.delete(id);
+        return next;
+      });
+    };
+    window.addEventListener("focus", clearVisible);
+    return () => window.removeEventListener("focus", clearVisible);
+  }, []);
+
+  useEffect(() => {
+    document.title = unreadIds.size ? `(${unreadIds.size}) Stereo` : "Stereo";
+  }, [unreadIds]);
 
   // Esc interrupts the selected thread's running turn — the Claude Code gesture.
   useEffect(() => {
@@ -128,6 +162,11 @@ export function App() {
     setMenu(null);
     if (id === null) localStorage.removeItem("stereo:selected-thread");
     else localStorage.setItem("stereo:selected-thread", id);
+    if (id) setUnreadIds((previous) => {
+      const next = new Set(previous);
+      next.delete(id);
+      return next;
+    });
   }, []);
 
   useEffect(() => {
@@ -145,6 +184,9 @@ export function App() {
       .catch((error) => setAppError(error instanceof Error ? error.message : String(error)));
     void stereo.threadStats(id)
       .then((stats) => setStatsByThread((prev) => ({ ...prev, [id]: stats })))
+      .catch(() => undefined);
+    void stereo.threadQueue(id)
+      .then((queue) => setQueueByThread((previous) => ({ ...previous, [id]: queue })))
       .catch(() => undefined);
   }, [selectedId]);
 
@@ -187,7 +229,7 @@ export function App() {
         const cwd = draftCwd ?? (await stereo.pickDir());
         if (!cwd) return false;
         setDraftCwd(cwd);
-        const thread = await stereo.createThread({ cwd, agent: draftAgent });
+        const thread = await stereo.createThread({ cwd, agent: draftAgent, permission: draftPermission });
         await stereo.sendMessage(thread.id, text, attachments);
         rememberDir(cwd);
         selectThread(thread.id);
@@ -197,7 +239,7 @@ export function App() {
         return false;
       }
     },
-    [draftCwd, draftAgent, rememberDir, selectThread],
+    [draftCwd, draftAgent, draftPermission, rememberDir, selectThread],
   );
 
   const resizeSidebar = useCallback((width: number) => {
@@ -258,11 +300,12 @@ export function App() {
     }
   }, [selected, menu, menuAgent, selectThread]);
 
-  const authModeChange = useCallback(
-    (mode: Settings["authMode"]) => {
+  const settingsChange = useCallback(
+    (next: Settings) => {
       if (!settings) return;
-      const next = { ...settings, authMode: mode };
       setSettings(next);
+      setDraftAgent(next.defaultAgent);
+      setDraftPermission(next.defaultPermission);
       void stereo.setSettings(next).catch((error) => {
         setSettings(settings);
         setAppError(error instanceof Error ? error.message : String(error));
@@ -289,6 +332,7 @@ export function App() {
       <Sidebar
         threads={threads}
         selectedId={selectedId}
+        unreadIds={unreadIds}
         agents={agents}
         settings={settings}
         width={sidebarWidth}
@@ -297,7 +341,7 @@ export function App() {
         onRename={renameThread}
         onDelete={deleteThread}
         onOpenDirectory={openDirectory}
-        onAuthModeChange={authModeChange}
+        onSettingsChange={settingsChange}
       />
       <div className="main">
         {isMock && <div className="mock-banner">Browser design preview — mock engine. Run the Stereo desktop app for real agents.</div>}
@@ -311,7 +355,17 @@ export function App() {
               <button className="chip cwd-chip" title={`Open ${selected.cwd}`} onClick={() => void openDirectory(selected)}>
                 {shortPath(selected.cwd)}
               </button>
-              <span className={`chip agent-chip ${selected.agent.agent}`}>{agentSummary(selected.agent)}</span>
+              <span className={`chip agent-chip ${selected.agent.agent}`} title="Harness and model are fixed for this native session. Fork to change them.">{agentSummary(selected.agent)}</span>
+              <select
+                className="chip permission-select"
+                aria-label="Thread access"
+                title="Access for future turns in this thread"
+                value={selected.permission}
+                onChange={(event) => void stereo.setThreadPermission(selected.id, event.target.value as PermissionMode).catch((error) => setAppError(error instanceof Error ? error.message : String(error)))}
+              >
+                <option value="workspace-write">Write access</option>
+                <option value="read-only">Read only</option>
+              </select>
               {stats &&
                 (stats.filesChanged === 0 ? (
                   <span className="chip diff-chip clean">clean</span>
@@ -349,6 +403,11 @@ export function App() {
               </div>
             </div>
             <Thread thread={selected} events={eventsByThread[selected.id] ?? []} live={liveByThread[selected.id] ?? ""} />
+            <QueueList
+              items={queueByThread[selected.id] ?? []}
+              onRemove={(messageId) => void stereo.removeQueued(selected.id, messageId)}
+              onMove={(messageId, direction) => void stereo.moveQueued(selected.id, messageId, direction)}
+            />
             <Composer
               key={selected.id}
               draftKey={`thread:${selected.id}`}
@@ -371,6 +430,7 @@ export function App() {
             cwd={draftCwd}
             recentDirs={recentDirs}
             agent={draftAgent}
+            permission={draftPermission}
             agents={agents}
             onPickDir={() => void pickDir()}
             onUseDir={(d) => {
@@ -378,6 +438,7 @@ export function App() {
               rememberDir(d);
             }}
             onAgentChange={setDraftAgent}
+            onPermissionChange={setDraftPermission}
             onSubmit={createFromDraft}
           />
         )}
