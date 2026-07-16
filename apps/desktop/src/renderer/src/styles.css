@@ -1163,6 +1163,11 @@ button.chip:hover {
 
 .md a {
   color: var(--codex);
+  cursor: pointer;
+}
+
+.md a:hover {
+  text-decoration-thickness: 2px;
 }
 
 /* ---------- transcript activity ---------- */

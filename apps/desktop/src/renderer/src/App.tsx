@@ -413,7 +413,16 @@ export function App() {
                 )}
               </div>
             </div>
-            <Thread thread={selected} events={eventsByThread[selected.id] ?? []} live={liveByThread[selected.id] ?? ""} />
+            <Thread
+              thread={selected}
+              events={eventsByThread[selected.id] ?? []}
+              live={liveByThread[selected.id] ?? ""}
+              onOpenLink={(href) => {
+                void stereo.openLink(selected.id, href).catch((error) => {
+                  setAppError(error instanceof Error ? error.message : String(error));
+                });
+              }}
+            />
             <QueueList
               items={queueByThread[selected.id] ?? []}
               onRemove={(messageId) => void stereo.removeQueued(selected.id, messageId)}

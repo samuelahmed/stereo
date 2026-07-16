@@ -9,11 +9,13 @@ export interface AgentSelection {
 
 export type AuthMode = "subscription" | "api-key";
 export type PermissionMode = "read-only" | "workspace-write";
+export type EditorPreference = "auto" | "vscode" | "cursor" | "zed" | "system";
 
 export interface Settings {
   authMode: AuthMode;
   defaultAgent: AgentSelection;
   defaultPermission: PermissionMode;
+  editor: EditorPreference;
   notifyOnComplete: boolean;
 }
 

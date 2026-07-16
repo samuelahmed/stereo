@@ -17,6 +17,7 @@ export interface StereoApi {
   detectAgents(): Promise<{ claude: AgentStatusInfo; codex: AgentStatusInfo }>;
   pickDir(): Promise<string | null>;
   openDir(directory: string): Promise<void>;
+  openLink(threadId: string, href: string): Promise<void>;
   pathForFile(file: File): string;
   previewFile(filePath: string): Promise<string | null>;
   createThread(input: { cwd: string; agent: AgentSelection; permission?: Thread["permission"] }): Promise<Thread>;
@@ -64,6 +65,7 @@ function createMock(): StereoApi {
     authMode: "subscription",
     defaultAgent: { agent: "claude", model: null, effort: null },
     defaultPermission: "workspace-write",
+    editor: "auto",
     notifyOnComplete: false,
   };
   const threads = new Map<string, Thread>();
@@ -157,6 +159,7 @@ function createMock(): StereoApi {
     }),
     pickDir: async () => "/Users/you/acme-app",
     openDir: async () => undefined,
+    openLink: async () => undefined,
     pathForFile: (file) => file.webkitRelativePath || file.name,
     previewFile: async () => null,
     createThread: async ({ cwd, agent, permission }) => {

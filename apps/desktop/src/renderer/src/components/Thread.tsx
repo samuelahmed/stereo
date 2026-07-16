@@ -8,6 +8,7 @@ interface Props {
   thread: ThreadT;
   events: EventEnvelope[];
   live: string;
+  onOpenLink(href: string): void;
 }
 
 type TranscriptItem =
@@ -70,7 +71,7 @@ function ToolGroup({ envelopes, agent }: { envelopes: EventEnvelope[]; agent: Ag
   );
 }
 
-function EventRow({ envelope, agent }: { envelope: EventEnvelope; agent: AgentId }) {
+function EventRow({ envelope, agent, onOpenLink }: { envelope: EventEnvelope; agent: AgentId; onOpenLink(href: string): void }) {
   const e = envelope.event;
   switch (e.type) {
     case "user-message":
@@ -108,7 +109,7 @@ function EventRow({ envelope, agent }: { envelope: EventEnvelope; agent: AgentId
       return (
         <div className={`agent-message ${agent}`}>
           <div className="message-label">{AGENT_NAME[agent]}</div>
-          <Markdown text={e.text} />
+          <Markdown text={e.text} onOpenLink={onOpenLink} />
         </div>
       );
     case "tool":
@@ -132,7 +133,7 @@ function EventRow({ envelope, agent }: { envelope: EventEnvelope; agent: AgentId
   }
 }
 
-export function Thread({ thread, events, live }: Props) {
+export function Thread({ thread, events, live, onOpenLink }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const items = useMemo(() => groupEvents(events), [events]);
@@ -156,13 +157,13 @@ export function Thread({ thread, events, live }: Props) {
           item.type === "tools" ? (
             <ToolGroup key={`tools-${item.envelopes[0]?.seq}`} envelopes={item.envelopes} agent={thread.agent.agent} />
           ) : (
-            <EventRow key={item.envelope.seq} envelope={item.envelope} agent={thread.agent.agent} />
+            <EventRow key={item.envelope.seq} envelope={item.envelope} agent={thread.agent.agent} onOpenLink={onOpenLink} />
           ),
         )}
         {live.length > 0 && (
           <div className={`agent-message live-message ${thread.agent.agent}`}>
             <div className="message-label">{AGENT_NAME[thread.agent.agent]}</div>
-            <Markdown text={live} />
+            <Markdown text={live} onOpenLink={onOpenLink} />
             <span className="cursor" />
           </div>
         )}

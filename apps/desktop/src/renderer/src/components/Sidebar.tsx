@@ -258,6 +258,16 @@ export function Sidebar({
                   <option value="read-only">Read only</option>
                 </select>
               </label>
+              <label>
+                <span>Open files in</span>
+                <select value={settings.editor} onChange={(event) => onSettingsChange({ ...settings, editor: event.target.value as Settings["editor"] })}>
+                  <option value="auto">Auto-detect editor</option>
+                  <option value="vscode">Visual Studio Code</option>
+                  <option value="cursor">Cursor</option>
+                  <option value="zed">Zed</option>
+                  <option value="system">System default</option>
+                </select>
+              </label>
               <label className="menu-checkbox">
                 <span>Completion notifications</span>
                 <input type="checkbox" checked={settings.notifyOnComplete} onChange={(event) => onSettingsChange({ ...settings, notifyOnComplete: event.target.checked })} />

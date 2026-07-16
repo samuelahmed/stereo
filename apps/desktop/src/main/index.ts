@@ -8,17 +8,27 @@ import {
   type AgentSelection,
   type Attachment,
   type EventEnvelope,
+  type EditorPreference,
   type QueuedMessage,
   type Settings,
   type Thread,
 } from "@stereo/core";
+import { openMarkdownLink } from "./link-opener.js";
 
 const DEFAULT_SETTINGS: Settings = {
   authMode: "subscription",
   defaultAgent: { agent: "claude", model: null, effort: null },
   defaultPermission: "workspace-write",
+  editor: "auto",
   notifyOnComplete: false,
 };
+
+const EDITOR_PREFERENCES = new Set<EditorPreference>(["auto", "vscode", "cursor", "zed", "system"]);
+
+function normalizeSettings(saved: Partial<Settings>): Settings {
+  const merged = { ...DEFAULT_SETTINGS, ...saved };
+  return { ...merged, editor: EDITOR_PREFERENCES.has(merged.editor) ? merged.editor : "auto" };
+}
 
 function settingsPath(): string {
   return path.join(app.getPath("userData"), "settings.json");
@@ -26,7 +36,7 @@ function settingsPath(): string {
 
 function loadSettings(): Settings {
   try {
-    return { ...DEFAULT_SETTINGS, ...(JSON.parse(fs.readFileSync(settingsPath(), "utf8")) as Partial<Settings>) };
+    return normalizeSettings(JSON.parse(fs.readFileSync(settingsPath(), "utf8")) as Partial<Settings>);
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -108,8 +118,9 @@ void app.whenReady().then(() => {
 
   ipcMain.handle("settings:get", () => loadSettings());
   ipcMain.handle("settings:set", (_e, next: Settings) => {
-    saveSettings(next);
-    engine.updateSettings(next);
+    const settings = normalizeSettings(next);
+    saveSettings(settings);
+    engine.updateSettings(settings);
   });
 
   ipcMain.handle("agents:detect", async () => {
@@ -124,6 +135,11 @@ void app.whenReady().then(() => {
   ipcMain.handle("dir:open", async (_e, directory: string) => {
     const error = await shell.openPath(directory);
     if (error) throw new Error(error);
+  });
+  ipcMain.handle("link:open", (_e, threadId: string, href: string) => {
+    const thread = engine.listThreads().find((candidate) => candidate.id === threadId);
+    if (!thread) throw new Error("This link belongs to a thread that no longer exists");
+    return openMarkdownLink(thread.cwd, href, loadSettings().editor);
   });
   // Sent by the preload whenever it resolves a real on-disk File the user
   // dropped, pasted, or picked — synthetic Files never resolve to a path.

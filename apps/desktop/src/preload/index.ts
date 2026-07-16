@@ -7,6 +7,7 @@ const api = {
   detectAgents: () => ipcRenderer.invoke("agents:detect"),
   pickDir: () => ipcRenderer.invoke("dir:pick"),
   openDir: (directory: string) => ipcRenderer.invoke("dir:open", directory),
+  openLink: (threadId: string, href: string) => ipcRenderer.invoke("link:open", threadId, href),
   pathForFile: (file: File) => {
     const filePath = webUtils.getPathForFile(file);
     // Register genuinely user-attached files with the main process so
