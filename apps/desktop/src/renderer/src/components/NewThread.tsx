@@ -46,13 +46,17 @@ export function NewThread({ cwd, recentDirs, agent, permission, agents, onPickDi
             <span className="config-label">Access</span>
             <select className="config-select" value={permission} onChange={(event) => onPermissionChange(event.target.value as PermissionMode)}>
               <option value="workspace-write">Workspace write</option>
+              {agent.agent === "claude" && <option value="ask">Ask before writes</option>}
               <option value="read-only">Read only</option>
             </select>
             <span className="config-help">Can be changed later per thread</span>
           </div>
           <div className="config-row">
             <span className="config-label">Agent</span>
-            <AgentPicker value={agent} onChange={onAgentChange} agents={agents} />
+            <AgentPicker value={agent} onChange={(next) => {
+              onAgentChange(next);
+              if (next.agent === "codex" && permission === "ask") onPermissionChange("workspace-write");
+            }} agents={agents} />
           </div>
         </div>
       </div>

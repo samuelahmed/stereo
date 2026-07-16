@@ -1,12 +1,16 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
-import type { AgentSelection, Attachment, EventEnvelope, QueuedMessage, Settings, Thread } from "@stereo/core";
+import type { AgentSelection, Attachment, EventEnvelope, Project, QueuedMessage, Settings, Thread } from "@stereo/core";
 
 const api = {
   getSettings: () => ipcRenderer.invoke("settings:get"),
-  setSettings: (settings: Settings) => ipcRenderer.invoke("settings:set", settings),
+  setSettings: (settings: Settings): Promise<Settings> => ipcRenderer.invoke("settings:set", settings),
   detectAgents: () => ipcRenderer.invoke("agents:detect"),
   pickDir: () => ipcRenderer.invoke("dir:pick"),
   openDir: (directory: string) => ipcRenderer.invoke("dir:open", directory),
+  listProjects: () => ipcRenderer.invoke("project:list"),
+  inspectProject: (projectId: string) => ipcRenderer.invoke("project:inspect", projectId),
+  updateProject: (projectId: string, update: Pick<Project, "name" | "defaults">) => ipcRenderer.invoke("project:update", projectId, update),
+  openProjectSource: (projectId: string, sourceId: string) => ipcRenderer.invoke("project:source:open", projectId, sourceId),
   openLink: (threadId: string, href: string) => ipcRenderer.invoke("link:open", threadId, href),
   pathForFile: (file: File) => {
     const filePath = webUtils.getPathForFile(file);
@@ -17,9 +21,10 @@ const api = {
     return filePath;
   },
   previewFile: (filePath: string) => ipcRenderer.invoke("file:preview", filePath),
-  createThread: (input: { cwd: string; agent: AgentSelection; permission?: Thread["permission"] }) => ipcRenderer.invoke("thread:create", input),
+  createThread: (input: { cwd: string; projectId?: string; agent: AgentSelection; permission?: Thread["permission"] }) => ipcRenderer.invoke("thread:create", input),
   setThreadPermission: (threadId: string, permission: Thread["permission"]) => ipcRenderer.invoke("thread:permission", threadId, permission),
   renameThread: (threadId: string, title: string) => ipcRenderer.invoke("thread:rename", threadId, title),
+  setThreadArchived: (threadId: string, archived: boolean) => ipcRenderer.invoke("thread:archive", threadId, archived),
   deleteThread: (threadId: string) => ipcRenderer.invoke("thread:delete", threadId),
   listThreads: () => ipcRenderer.invoke("thread:list"),
   threadEvents: (threadId: string) => ipcRenderer.invoke("thread:events", threadId),
@@ -31,6 +36,11 @@ const api = {
   threadQueue: (threadId: string) => ipcRenderer.invoke("thread:queue", threadId),
   removeQueued: (threadId: string, messageId: string) => ipcRenderer.invoke("thread:queue:remove", threadId, messageId),
   moveQueued: (threadId: string, messageId: string, direction: -1 | 1) => ipcRenderer.invoke("thread:queue:move", threadId, messageId, direction),
+  sessionInfo: (threadId: string) => ipcRenderer.invoke("session:info", threadId),
+  compactSession: (threadId: string) => ipcRenderer.invoke("session:compact", threadId),
+  addCheckpoint: (threadId: string, label: string) => ipcRenderer.invoke("session:checkpoint", threadId, label),
+  resolvePermission: (requestId: string, allowed: boolean) => ipcRenderer.invoke("session:permission", requestId, allowed),
+  copyResumeCommand: (threadId: string) => ipcRenderer.invoke("session:copy-resume", threadId),
   onEvent: (handler: (envelope: EventEnvelope) => void) => {
     const listener = (_e: unknown, envelope: EventEnvelope) => handler(envelope);
     ipcRenderer.on("stereo:event", listener);

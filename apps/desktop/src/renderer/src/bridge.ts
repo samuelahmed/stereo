@@ -4,8 +4,11 @@ import type {
   AgentStatusInfo,
   DiffStats,
   EventEnvelope,
+  Project,
+  ProjectInspection,
   QueuedMessage,
   Settings,
+  SessionInfo,
   Thread,
   ThreadEvent,
 } from "@stereo/core";
@@ -13,16 +16,21 @@ import { CLAUDE_EFFORTS, CLAUDE_MODELS, CODEX_EFFORTS, CODEX_MODELS } from "@ste
 
 export interface StereoApi {
   getSettings(): Promise<Settings>;
-  setSettings(settings: Settings): Promise<void>;
+  setSettings(settings: Settings): Promise<Settings>;
   detectAgents(): Promise<{ claude: AgentStatusInfo; codex: AgentStatusInfo }>;
   pickDir(): Promise<string | null>;
   openDir(directory: string): Promise<void>;
+  listProjects(): Promise<Project[]>;
+  inspectProject(projectId: string): Promise<ProjectInspection>;
+  updateProject(projectId: string, update: Pick<Project, "name" | "defaults">): Promise<Project>;
+  openProjectSource(projectId: string, sourceId: string): Promise<void>;
   openLink(threadId: string, href: string): Promise<void>;
   pathForFile(file: File): string;
   previewFile(filePath: string): Promise<string | null>;
-  createThread(input: { cwd: string; agent: AgentSelection; permission?: Thread["permission"] }): Promise<Thread>;
+  createThread(input: { cwd: string; projectId?: string; agent: AgentSelection; permission?: Thread["permission"] }): Promise<Thread>;
   setThreadPermission(threadId: string, permission: Thread["permission"]): Promise<Thread>;
   renameThread(threadId: string, title: string): Promise<Thread>;
+  setThreadArchived(threadId: string, archived: boolean): Promise<Thread>;
   deleteThread(threadId: string): Promise<void>;
   listThreads(): Promise<Thread[]>;
   threadEvents(threadId: string): Promise<EventEnvelope[]>;
@@ -34,6 +42,11 @@ export interface StereoApi {
   threadQueue(threadId: string): Promise<QueuedMessage[]>;
   removeQueued(threadId: string, messageId: string): Promise<void>;
   moveQueued(threadId: string, messageId: string, direction: -1 | 1): Promise<void>;
+  sessionInfo(threadId: string): Promise<SessionInfo>;
+  compactSession(threadId: string): Promise<SessionInfo>;
+  addCheckpoint(threadId: string, label: string): Promise<void>;
+  resolvePermission(requestId: string, allowed: boolean): Promise<void>;
+  copyResumeCommand(threadId: string): Promise<string>;
   onEvent(handler: (envelope: EventEnvelope) => void): () => void;
   onDelta(handler: (delta: { threadId: string; text: string }) => void): () => void;
   onThreads(handler: (threads: Thread[]) => void): () => void;
@@ -74,6 +87,14 @@ function createMock(): StereoApi {
   const eventHandlers = new Set<(e: EventEnvelope) => void>();
   const deltaHandlers = new Set<(d: { threadId: string; text: string }) => void>();
   const threadHandlers = new Set<(t: Thread[]) => void>();
+  const mockProject: Project = {
+    id: "mock-project",
+    name: "acme-app",
+    cwd: "/Users/you/acme-app",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    defaults: { agent: null, permission: null },
+  };
 
   const list = () => [...threads.values()].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
   const pushThreads = () => threadHandlers.forEach((h) => h(list()));
@@ -93,6 +114,7 @@ function createMock(): StereoApi {
       id,
       title: "New thread",
       cwd,
+      projectId: mockProject.id,
       kind: "chat",
       agent,
       permission,
@@ -100,10 +122,39 @@ function createMock(): StereoApi {
       createdAt: now,
       updatedAt: now,
       usage: { inputTokens: 0, outputTokens: 0 },
+      compactions: 0,
+      lastTurnUsage: null,
     };
     threads.set(id, thread);
     events.set(id, []);
     return thread;
+  };
+
+  const mockSessionInfo = (threadId: string): SessionInfo => {
+    const thread = threads.get(threadId)!;
+    const usedTokens = Math.round((thread.usage.inputTokens + thread.usage.outputTokens) * 0.72);
+    const windowTokens = thread.agent.agent === "claude" ? 1_000_000 : 258_000;
+    return {
+      threadId,
+      nativeSession: Boolean(thread.sessionId),
+      context: { usedTokens, windowTokens, percent: Math.round((usedTokens / windowTokens) * 100), source: "estimated" },
+      cumulativeUsage: thread.usage,
+      lastTurnUsage: thread.lastTurnUsage ?? null,
+      compactions: thread.compactions,
+      queuedMessages: 0,
+      checkpoints: (events.get(threadId) ?? []).filter((event) => event.event.type === "checkpoint").length,
+      capabilities: {
+        streaming: thread.agent.agent === "claude" ? "token" : "item",
+        nativeResume: true,
+        interactivePermissions: thread.agent.agent === "claude",
+        contextWindow: windowTokens,
+        configuration: true,
+        mcp: true,
+        hooks: true,
+        skills: true,
+        nativeCompact: false,
+      },
+    };
   };
 
   const runMockTurn = async (thread: Thread) => {
@@ -138,6 +189,7 @@ function createMock(): StereoApi {
     getSettings: async () => settings,
     setSettings: async (next) => {
       settings = next;
+      return settings;
     },
     detectAgents: async () => ({
       claude: {
@@ -159,6 +211,18 @@ function createMock(): StereoApi {
     }),
     pickDir: async () => "/Users/you/acme-app",
     openDir: async () => undefined,
+    listProjects: async () => [mockProject],
+    inspectProject: async () => ({
+      project: mockProject,
+      sources: [
+        { id: "agents-instructions", harness: "shared", scope: "project", label: "Repository instructions", path: `${mockProject.cwd}/AGENTS.md`, exists: true, summary: "42 lines · 3 KB" },
+        { id: "codex-project", harness: "codex", scope: "project", label: "Codex project config", path: `${mockProject.cwd}/.codex/config.toml`, exists: false, summary: "Not configured" },
+      ],
+      extensions: [{ id: "mock-skill", harness: "codex", kind: "skill", name: "release-check", source: `${mockProject.cwd}/.codex/skills/release-check`, enabled: true, detail: "Directory" }],
+      warnings: [],
+    }),
+    updateProject: async (_projectId, update) => Object.assign(mockProject, update),
+    openProjectSource: async () => undefined,
     openLink: async () => undefined,
     pathForFile: (file) => file.webkitRelativePath || file.name,
     previewFile: async () => null,
@@ -182,6 +246,16 @@ function createMock(): StereoApi {
       pushThreads();
       return thread;
     },
+    setThreadArchived: async (threadId, archived) => {
+      const thread = threads.get(threadId);
+      if (!thread) throw new Error(`Unknown thread ${threadId}`);
+      if (archived && thread.status === "running") throw new Error("Stop the running thread before archiving it");
+      if (archived) thread.archivedAt = new Date().toISOString();
+      else delete thread.archivedAt;
+      thread.updatedAt = new Date().toISOString();
+      pushThreads();
+      return thread;
+    },
     deleteThread: async (threadId) => {
       const thread = threads.get(threadId);
       if (thread?.status === "running") throw new Error("Stop the running thread before deleting it");
@@ -195,6 +269,7 @@ function createMock(): StereoApi {
     sendMessage: async (threadId, text, attachments = []) => {
       const thread = threads.get(threadId);
       if (!thread) return;
+      if (thread.archivedAt) throw new Error("Restore this thread before sending another message");
       if (thread.title === "New thread") thread.title = (text.trim() || attachments[0]?.name || "New thread").split("\n")[0]!.slice(0, 80);
       emit(threadId, { type: "user-message", text, attachments });
       pushThreads();
@@ -241,6 +316,16 @@ function createMock(): StereoApi {
     threadQueue: async () => [],
     removeQueued: async () => undefined,
     moveQueued: async () => undefined,
+    sessionInfo: async (threadId) => mockSessionInfo(threadId),
+    compactSession: async (threadId) => {
+      const thread = threads.get(threadId)!;
+      thread.compactions += 1;
+      emit(threadId, { type: "compacted", approxTokens: 18_000, trimmedEvents: 4 });
+      return mockSessionInfo(threadId);
+    },
+    addCheckpoint: async (threadId, label) => emit(threadId, { type: "checkpoint", label }),
+    resolvePermission: async () => undefined,
+    copyResumeCommand: async () => "codex resume mock-session",
     onEvent: (h) => {
       eventHandlers.add(h);
       return () => eventHandlers.delete(h);

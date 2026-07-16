@@ -8,7 +8,7 @@ export interface AgentSelection {
 }
 
 export type AuthMode = "subscription" | "api-key";
-export type PermissionMode = "read-only" | "workspace-write";
+export type PermissionMode = "read-only" | "ask" | "workspace-write";
 export type EditorPreference = "auto" | "vscode" | "cursor" | "zed" | "system";
 
 export interface Settings {
@@ -17,6 +17,67 @@ export interface Settings {
   defaultPermission: PermissionMode;
   editor: EditorPreference;
   notifyOnComplete: boolean;
+}
+
+export interface HarnessCapabilities {
+  streaming: "token" | "item";
+  nativeResume: boolean;
+  interactivePermissions: boolean;
+  contextWindow: number | null;
+  configuration: boolean;
+  mcp: boolean;
+  hooks: boolean;
+  skills: boolean;
+  nativeCompact: boolean;
+}
+
+export interface HarnessDescriptor {
+  id: AgentId;
+  name: string;
+  shortName: string;
+  capabilities: HarnessCapabilities;
+}
+
+/** A repository-scoped workspace shared by any number of threads. */
+export interface Project {
+  id: string;
+  name: string;
+  cwd: string;
+  createdAt: string;
+  updatedAt: string;
+  defaults: {
+    agent: AgentSelection | null;
+    permission: PermissionMode | null;
+  };
+}
+
+export type ConfigScope = "managed" | "user" | "project" | "local";
+
+export interface ConfigSource {
+  id: string;
+  harness: AgentId | "shared";
+  scope: ConfigScope;
+  label: string;
+  path: string;
+  exists: boolean;
+  summary: string;
+}
+
+export interface ExtensionInfo {
+  id: string;
+  harness: AgentId;
+  kind: "mcp" | "hook" | "skill" | "instruction" | "plugin";
+  name: string;
+  source: string;
+  enabled: boolean;
+  detail: string;
+}
+
+export interface ProjectInspection {
+  project: Project;
+  sources: ConfigSource[];
+  extensions: ExtensionInfo[];
+  warnings: string[];
 }
 
 export type ThreadKind = "chat" | "review";
@@ -57,24 +118,60 @@ export interface Thread {
   id: string;
   title: string;
   cwd: string;
+  projectId: string;
   kind: ThreadKind;
   agent: AgentSelection;
   permission: PermissionMode;
   status: ThreadStatus;
   createdAt: string;
   updatedAt: string;
+  /** Present while the thread is hidden from the active conversation list. */
+  archivedAt?: string;
   usage: TokenUsage;
   sessionId?: string;
   forkedFrom?: { threadId: string; title: string };
   /** Compiled handoff context that rides along with the next message, then clears. */
   pendingBriefing?: string;
+  compactions: number;
+  lastTurnUsage?: TokenUsage | null;
+}
+
+export interface SessionInfo {
+  threadId: string;
+  nativeSession: boolean;
+  context: {
+    usedTokens: number;
+    windowTokens: number | null;
+    percent: number | null;
+    source: "estimated" | "provider";
+  };
+  cumulativeUsage: TokenUsage;
+  lastTurnUsage: TokenUsage | null;
+  compactions: number;
+  queuedMessages: number;
+  checkpoints: number;
+  capabilities: HarnessCapabilities;
+}
+
+export interface PermissionRequest {
+  id: string;
+  threadId: string;
+  tool: string;
+  title: string;
+  detail: string;
+  input: Record<string, unknown>;
+  createdAt: string;
 }
 
 export type ThreadEvent =
-  | { type: "user-message"; text: string; attachments?: Attachment[] }
+  | { type: "user-message"; text: string; attachments?: Attachment[]; messageId?: string }
   | { type: "briefing"; text: string; trimmedEvents: number; approxTokens: number }
   | { type: "agent-text"; text: string }
   | { type: "tool"; name: string; detail: string }
+  | { type: "permission-request"; request: PermissionRequest }
+  | { type: "permission-response"; requestId: string; allowed: boolean }
+  | { type: "checkpoint"; label: string }
+  | { type: "compacted"; approxTokens: number; trimmedEvents: number }
   | { type: "turn-end"; usage: TokenUsage | null }
   | { type: "interrupted" }
   | { type: "notice"; text: string }

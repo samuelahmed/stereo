@@ -9,6 +9,8 @@ export interface TurnCallbacks {
   onTool(name: string, detail: string): void;
   /** Authoritative usage for the turn, reported once from the final result. */
   onUsage(usage: TokenUsage): void;
+  /** Ask the host to resolve a provider permission prompt. */
+  onPermission(tool: string, input: Record<string, unknown>, detail: string): Promise<boolean>;
 }
 
 export interface TurnOptions {

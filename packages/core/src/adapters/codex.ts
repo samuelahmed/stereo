@@ -35,6 +35,7 @@ function itemDetail(item: Rec): string {
  * own CLI shows.
  */
 export function codexAdapter(authMode: AuthMode, spec: AgentSelection, permission: PermissionMode): AgentAdapter {
+  if (permission === "ask") throw new Error("Interactive approvals are not available through Codex exec yet");
   return {
     agent: "codex",
     startTurn(prompt: string, opts: TurnOptions, cb: TurnCallbacks): TurnHandle {

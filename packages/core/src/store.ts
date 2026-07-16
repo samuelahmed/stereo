@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { EventEnvelope, Thread } from "./types.js";
+import type { EventEnvelope, Project, QueuedMessage, Thread } from "./types.js";
 
 /**
  * Event-sourced persistence. threads.json holds thread metadata (written
@@ -11,10 +11,14 @@ import type { EventEnvelope, Thread } from "./types.js";
 export class ThreadStore {
   private threadsFile: string;
   private eventsDir: string;
+  private projectsFile: string;
+  private queuesFile: string;
 
   constructor(dir: string) {
     this.threadsFile = path.join(dir, "threads.json");
     this.eventsDir = path.join(dir, "events");
+    this.projectsFile = path.join(dir, "projects.json");
+    this.queuesFile = path.join(dir, "queues.json");
     fs.mkdirSync(this.eventsDir, { recursive: true });
   }
 
@@ -27,9 +31,23 @@ export class ThreadStore {
   }
 
   saveThreads(threads: Thread[]): void {
-    const tmp = `${this.threadsFile}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(threads, null, 2));
-    fs.renameSync(tmp, this.threadsFile);
+    this.atomicJson(this.threadsFile, threads);
+  }
+
+  loadProjects(): Project[] {
+    return this.readJson<Project[]>(this.projectsFile, []);
+  }
+
+  saveProjects(projects: Project[]): void {
+    this.atomicJson(this.projectsFile, projects);
+  }
+
+  loadQueues(): Record<string, QueuedMessage[]> {
+    return this.readJson<Record<string, QueuedMessage[]>>(this.queuesFile, {});
+  }
+
+  saveQueues(queues: Map<string, QueuedMessage[]>): void {
+    this.atomicJson(this.queuesFile, Object.fromEntries([...queues].filter(([, queue]) => queue.length > 0)));
   }
 
   appendEvent(envelope: EventEnvelope): void {
@@ -63,5 +81,19 @@ export class ThreadStore {
 
   private eventsFile(threadId: string): string {
     return path.join(this.eventsDir, `${threadId}.jsonl`);
+  }
+
+  private readJson<T>(file: string, fallback: T): T {
+    try {
+      return JSON.parse(fs.readFileSync(file, "utf8")) as T;
+    } catch {
+      return fallback;
+    }
+  }
+
+  private atomicJson(file: string, value: unknown): void {
+    const tmp = `${file}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(value, null, 2));
+    fs.renameSync(tmp, file);
   }
 }

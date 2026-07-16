@@ -127,6 +127,26 @@ export function buildResumeBriefing(
   return { text, trimmedEvents: transcript.trimmedEvents, approxTokens: approxTokens(text.length) };
 }
 
+/**
+ * Provider-neutral context compaction. It deliberately creates a fresh native
+ * session and carries forward a bounded transcript briefing. This works the
+ * same way for every harness and does not pretend a slash command is portable.
+ */
+export function buildCompactBriefing(
+  events: EventEnvelope[],
+  opts: { fromAgent: AgentId; cwd: string },
+): CompiledBriefing {
+  const transcript = compileTranscript(events, opts.fromAgent, 100_000);
+  const text = [
+    `You are continuing a compacted coding session previously driven by ${AGENT_LABEL[opts.fromAgent]}. Earlier low-signal events may have been removed. The working tree at ${opts.cwd} is authoritative.`,
+    `--- COMPACTED SESSION CONTEXT ---`,
+    transcript.text,
+    `--- END CONTEXT ---`,
+    `Continue from this state. The user's next message follows.`,
+  ].join("\n\n");
+  return { text, trimmedEvents: transcript.trimmedEvents, approxTokens: approxTokens(text.length) };
+}
+
 const MAX_DIFF_CHARS_IN_BRIEFING = 200_000;
 
 /** Briefing for "review this thread's uncommitted work with another model". */

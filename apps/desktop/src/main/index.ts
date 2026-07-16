@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, shell } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 import {
@@ -10,6 +10,7 @@ import {
   type EventEnvelope,
   type EditorPreference,
   type QueuedMessage,
+  type Project,
   type Settings,
   type Thread,
 } from "@stereo/core";
@@ -27,7 +28,11 @@ const EDITOR_PREFERENCES = new Set<EditorPreference>(["auto", "vscode", "cursor"
 
 function normalizeSettings(saved: Partial<Settings>): Settings {
   const merged = { ...DEFAULT_SETTINGS, ...saved };
-  return { ...merged, editor: EDITOR_PREFERENCES.has(merged.editor) ? merged.editor : "auto" };
+  return {
+    ...merged,
+    editor: EDITOR_PREFERENCES.has(merged.editor) ? merged.editor : "auto",
+    defaultPermission: merged.defaultAgent.agent === "codex" && merged.defaultPermission === "ask" ? "workspace-write" : merged.defaultPermission,
+  };
 }
 
 function settingsPath(): string {
@@ -121,6 +126,7 @@ void app.whenReady().then(() => {
     const settings = normalizeSettings(next);
     saveSettings(settings);
     engine.updateSettings(settings);
+    return settings;
   });
 
   ipcMain.handle("agents:detect", async () => {
@@ -134,6 +140,15 @@ void app.whenReady().then(() => {
   });
   ipcMain.handle("dir:open", async (_e, directory: string) => {
     const error = await shell.openPath(directory);
+    if (error) throw new Error(error);
+  });
+  ipcMain.handle("project:list", () => engine.listProjects());
+  ipcMain.handle("project:inspect", (_e, projectId: string) => engine.inspectProject(projectId));
+  ipcMain.handle("project:update", (_e, projectId: string, update: Pick<Project, "name" | "defaults">) => engine.updateProject(projectId, update));
+  ipcMain.handle("project:source:open", async (_e, projectId: string, sourceId: string) => {
+    const source = engine.inspectProject(projectId).sources.find((candidate) => candidate.id === sourceId);
+    if (!source?.exists) throw new Error("That configuration source does not exist");
+    const error = await shell.openPath(source.path);
     if (error) throw new Error(error);
   });
   ipcMain.handle("link:open", (_e, threadId: string, href: string) => {
@@ -164,9 +179,10 @@ void app.whenReady().then(() => {
     return `data:${mime};base64,${data.toString("base64")}`;
   });
 
-  ipcMain.handle("thread:create", (_e, input: { cwd: string; agent: AgentSelection; permission?: Thread["permission"] }) => engine.createThread(input));
+  ipcMain.handle("thread:create", (_e, input: { cwd: string; projectId?: string; agent: AgentSelection; permission?: Thread["permission"] }) => engine.createThread(input));
   ipcMain.handle("thread:permission", (_e, threadId: string, permission: Thread["permission"]) => engine.setThreadPermission(threadId, permission));
   ipcMain.handle("thread:rename", (_e, threadId: string, title: string) => engine.renameThread(threadId, title));
+  ipcMain.handle("thread:archive", (_e, threadId: string, archived: boolean) => engine.setThreadArchived(threadId, archived));
   ipcMain.handle("thread:delete", (_e, threadId: string) => engine.deleteThread(threadId));
   ipcMain.handle("thread:list", () => engine.listThreads());
   ipcMain.handle("thread:events", (_e, threadId: string) => {
@@ -189,8 +205,19 @@ void app.whenReady().then(() => {
   ipcMain.handle("thread:queue:move", (_e, threadId: string, messageId: string, direction: -1 | 1) =>
     engine.moveQueued(threadId, messageId, direction),
   );
+  ipcMain.handle("session:info", (_e, threadId: string) => engine.sessionInfo(threadId));
+  ipcMain.handle("session:compact", (_e, threadId: string) => engine.compactThread(threadId));
+  ipcMain.handle("session:checkpoint", (_e, threadId: string, label: string) => engine.addCheckpoint(threadId, label));
+  ipcMain.handle("session:permission", (_e, requestId: string, allowed: boolean) => engine.resolvePermission(requestId, allowed));
+  ipcMain.handle("session:copy-resume", (_e, threadId: string) => {
+    const command = engine.nativeResumeCommand(threadId);
+    if (!command) throw new Error("This thread does not have a native session yet");
+    clipboard.writeText(command);
+    return command;
+  });
 
   createWindow();
+  engine.resumeQueued();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

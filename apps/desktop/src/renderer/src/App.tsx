@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AgentSelection, AgentStatusInfo, Attachment, DiffStats, EventEnvelope, PermissionMode, QueuedMessage, Settings, Thread as ThreadT } from "@stereo/core";
+import type { AgentSelection, AgentStatusInfo, Attachment, DiffStats, EventEnvelope, PermissionMode, Project, QueuedMessage, Settings, Thread as ThreadT } from "@stereo/core";
 import { bridgeFailed, isMock, stereo } from "./bridge";
 import { AGENT_NAME, agentSummary, formatTokens, otherAgent, shortPath } from "./labels";
 import { AgentPicker } from "./components/AgentPicker";
 import { Composer } from "./components/Composer";
+import { CommandPalette, type PaletteCommand } from "./components/CommandPalette";
+import { ControlCenter } from "./components/ControlCenter";
 import { NewThread } from "./components/NewThread";
 import { QueueList } from "./components/QueueList";
 import { Sidebar } from "./components/Sidebar";
@@ -30,6 +32,7 @@ function loadSidebarWidth(): number {
 
 export function App() {
   const [threads, setThreads] = useState<ThreadT[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [booting, setBooting] = useState(true);
   const [appError, setAppError] = useState<string | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth);
@@ -47,6 +50,8 @@ export function App() {
   const [draftPermission, setDraftPermission] = useState<PermissionMode>("workspace-write");
   const [menu, setMenu] = useState<"fork" | "review" | null>(null);
   const [menuAgent, setMenuAgent] = useState<AgentSelection>({ agent: "codex", model: null, effort: null });
+  const [controlTab, setControlTab] = useState<"session" | "project" | "extensions" | "diagnostics" | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   const selected = useMemo(() => threads.find((t) => t.id === selectedId) ?? null, [threads, selectedId]);
   const selectedRef = useRef<ThreadT | null>(null);
@@ -62,10 +67,11 @@ export function App() {
         setDraftPermission(s.defaultPermission);
       }),
       stereo.detectAgents().then(setAgents),
+      stereo.listProjects().then(setProjects),
       stereo.listThreads().then((loaded) => {
         setThreads(loaded);
         const remembered = localStorage.getItem("stereo:selected-thread");
-        if (remembered && loaded.some((thread) => thread.id === remembered)) setSelectedId(remembered);
+        if (remembered && loaded.some((thread) => thread.id === remembered && !thread.archivedAt)) setSelectedId(remembered);
       }),
     ])
       .catch((error) => setAppError(error instanceof Error ? error.message : String(error)))
@@ -145,6 +151,16 @@ export function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const current = selectedRef.current;
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        setPaletteOpen((open) => !open);
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "," && current) {
+        e.preventDefault();
+        setControlTab("session");
+        return;
+      }
       if (e.key === "Escape" && current?.status === "running" && !document.querySelector('[role="dialog"], [role="menu"]')) {
         void stereo.interrupt(current.id);
       }
@@ -160,6 +176,18 @@ export function App() {
       return next;
     });
   }, []);
+
+  const useDirectory = useCallback((dir: string) => {
+    setDraftCwd(dir);
+    rememberDir(dir);
+    const project = projects.find((candidate) => candidate.cwd === dir);
+    const nextAgent = project?.defaults.agent;
+    const effectiveAgent = nextAgent ?? draftAgent;
+    if (nextAgent) setDraftAgent(nextAgent);
+    if (project?.defaults.permission) {
+      setDraftPermission(project.defaults.permission === "ask" && effectiveAgent.agent === "codex" ? "workspace-write" : project.defaults.permission);
+    }
+  }, [draftAgent, projects, rememberDir]);
 
   const selectThread = useCallback((id: string | null) => {
     setSelectedId(id);
@@ -219,13 +247,12 @@ export function App() {
     try {
       const picked = await stereo.pickDir();
       if (picked) {
-        setDraftCwd(picked);
-        rememberDir(picked);
+        useDirectory(picked);
       }
     } catch (error) {
       setAppError(error instanceof Error ? error.message : String(error));
     }
-  }, [rememberDir]);
+  }, [useDirectory]);
 
   const createFromDraft = useCallback(
     async (text: string, attachments: Attachment[]): Promise<boolean> => {
@@ -233,7 +260,9 @@ export function App() {
         const cwd = draftCwd ?? (await stereo.pickDir());
         if (!cwd) return false;
         setDraftCwd(cwd);
-        const thread = await stereo.createThread({ cwd, agent: draftAgent, permission: draftPermission });
+        const permission = draftAgent.agent === "codex" && draftPermission === "ask" ? "workspace-write" : draftPermission;
+        const thread = await stereo.createThread({ cwd, agent: draftAgent, permission });
+        void stereo.listProjects().then(setProjects);
         await stereo.sendMessage(thread.id, text, attachments);
         rememberDir(cwd);
         selectThread(thread.id);
@@ -268,9 +297,29 @@ export function App() {
     }
   }, []);
 
+  const archiveThread = useCallback(async (thread: ThreadT, archived: boolean) => {
+    try {
+      await stereo.setThreadArchived(thread.id, archived);
+      if (archived) {
+        setUnreadIds((previous) => {
+          const next = new Set(previous);
+          next.delete(thread.id);
+          return next;
+        });
+        if (selectedId === thread.id) {
+          selectThread(threads.find((candidate) => candidate.id !== thread.id && !candidate.archivedAt)?.id ?? null);
+        }
+      }
+    } catch (error) {
+      setAppError(error instanceof Error ? error.message : String(error));
+    }
+  }, [selectedId, selectThread, threads]);
+
   const deleteThread = useCallback(async (thread: ThreadT) => {
     await stereo.deleteThread(thread.id);
-    if (selectedId === thread.id) selectThread(threads.find((candidate) => candidate.id !== thread.id)?.id ?? null);
+    if (selectedId === thread.id) {
+      selectThread(threads.find((candidate) => candidate.id !== thread.id && !candidate.archivedAt)?.id ?? null);
+    }
     setEventsByThread((previous) => {
       const next = { ...previous };
       delete next[thread.id];
@@ -308,19 +357,28 @@ export function App() {
     (next: Settings) => {
       if (!settings) return;
       const previous = settings;
+      const requested = next.defaultAgent.agent === "codex" && next.defaultPermission === "ask"
+        ? { ...next, defaultPermission: "workspace-write" as const }
+        : next;
       // Only sync the new-thread draft with the default that actually changed —
       // toggling an unrelated setting must not clobber an in-progress draft.
-      const agentChanged = next.defaultAgent !== previous.defaultAgent;
-      const permissionChanged = next.defaultPermission !== previous.defaultPermission;
-      setSettings(next);
-      if (agentChanged) setDraftAgent(next.defaultAgent);
-      if (permissionChanged) setDraftPermission(next.defaultPermission);
-      void stereo.setSettings(next).catch((error) => {
-        setSettings(previous);
-        if (agentChanged) setDraftAgent(previous.defaultAgent);
-        if (permissionChanged) setDraftPermission(previous.defaultPermission);
-        setAppError(error instanceof Error ? error.message : String(error));
-      });
+      const agentChanged = requested.defaultAgent !== previous.defaultAgent;
+      const permissionChanged = requested.defaultPermission !== previous.defaultPermission;
+      setSettings(requested);
+      if (agentChanged) setDraftAgent(requested.defaultAgent);
+      if (permissionChanged) setDraftPermission(requested.defaultPermission);
+      void stereo.setSettings(requested)
+        .then((normalized) => {
+          setSettings(normalized);
+          if (agentChanged) setDraftAgent(normalized.defaultAgent);
+          if (permissionChanged) setDraftPermission(normalized.defaultPermission);
+        })
+        .catch((error) => {
+          setSettings(previous);
+          if (agentChanged) setDraftAgent(previous.defaultAgent);
+          if (permissionChanged) setDraftPermission(previous.defaultPermission);
+          setAppError(error instanceof Error ? error.message : String(error));
+        });
     },
     [settings],
   );
@@ -337,11 +395,24 @@ export function App() {
   }
 
   const stats = selected ? statsByThread[selected.id] : null;
+  const paletteCommands: PaletteCommand[] = [
+    { id: "new", label: "New thread", detail: "Start a conversation in a project", group: "Stereo", shortcut: "⌘N", run: () => selectThread(null) },
+    { id: "session", label: "Session controls", detail: "Context, usage, compaction, and checkpoints", group: "Conversation", shortcut: "⌘,", disabled: !selected, run: () => setControlTab("session") },
+    { id: "project", label: "Project settings", detail: "Defaults and configuration provenance", group: "Project", disabled: !selected, run: () => setControlTab("project") },
+    { id: "extensions", label: "Extensions", detail: "MCP servers, hooks, skills, and plugins", group: "Project", disabled: !selected, run: () => setControlTab("extensions") },
+    { id: "compact", label: "Compact context", detail: "Rebuild a bounded portable context for the next turn", group: "Harness", disabled: !selected || selected.status === "running", run: () => { if (selected) void stereo.compactSession(selected.id).catch((error) => setAppError(error instanceof Error ? error.message : String(error))); } },
+    { id: "diagnostics", label: "Session diagnostics", detail: "Recovery state and native CLI escape hatch", group: "Harness", disabled: !selected, run: () => setControlTab("diagnostics") },
+    { id: "fork", label: "Fork conversation", detail: "Continue with another model or harness", group: "Conversation", disabled: !selected, run: () => openMenu("fork") },
+    { id: "review", label: "Review working tree", detail: "Ask the other harness for a second opinion", group: "Conversation", disabled: !selected, run: () => openMenu("review") },
+    { id: "folder", label: "Open working folder", detail: selected?.cwd ?? "No active project", group: "Project", disabled: !selected, run: () => { if (selected) void openDirectory(selected); } },
+    { id: "archive", label: selected?.archivedAt ? "Restore thread" : "Archive thread", detail: selected?.archivedAt ? "Return this conversation to its project" : "Hide this conversation without deleting it", group: "Conversation", disabled: !selected || (!selected.archivedAt && selected.status === "running"), run: () => { if (selected) void archiveThread(selected, !selected.archivedAt); } },
+  ];
 
   return (
     <div className="app">
       <Sidebar
         threads={threads}
+        projects={projects}
         selectedId={selectedId}
         unreadIds={unreadIds}
         agents={agents}
@@ -350,9 +421,18 @@ export function App() {
         onWidthChange={resizeSidebar}
         onSelect={selectThread}
         onRename={renameThread}
+        onArchive={archiveThread}
         onDelete={deleteThread}
         onOpenDirectory={openDirectory}
         onSettingsChange={settingsChange}
+        onProjectSettings={(projectId) => {
+          const thread = threads.find((candidate) => candidate.projectId === projectId);
+          if (thread) {
+            selectThread(thread.id);
+            setControlTab("project");
+          }
+        }}
+        onCommandPalette={() => setPaletteOpen(true)}
       />
       <div className="main">
         {isMock && <div className="mock-banner">Browser design preview — mock engine. Run the Stereo desktop app for real agents.</div>}
@@ -366,15 +446,17 @@ export function App() {
               <button className="chip cwd-chip" title={`Open ${selected.cwd}`} onClick={() => void openDirectory(selected)}>
                 {shortPath(selected.cwd)}
               </button>
-              <span className={`chip agent-chip ${selected.agent.agent}`} title="Harness and model are fixed for this native session. Fork to change them.">{agentSummary(selected.agent)}</span>
+              <button className={`chip agent-chip ${selected.agent.agent}`} title="Open session and harness controls" onClick={() => setControlTab("session")}>{agentSummary(selected.agent)} <span aria-hidden="true">⌄</span></button>
               <select
                 className="chip permission-select"
                 aria-label="Thread access"
                 title="Access for future turns in this thread"
+                disabled={Boolean(selected.archivedAt)}
                 value={selected.permission}
                 onChange={(event) => void stereo.setThreadPermission(selected.id, event.target.value as PermissionMode).catch((error) => setAppError(error instanceof Error ? error.message : String(error)))}
               >
                 <option value="workspace-write">Write access</option>
+                {selected.agent.agent === "claude" && <option value="ask">Ask before writes</option>}
                 <option value="read-only">Read only</option>
               </select>
               {stats &&
@@ -387,7 +469,7 @@ export function App() {
                   </span>
                 ))}
               <span className="spacer" />
-              <span className="usage">{formatTokens(selected.usage.inputTokens + selected.usage.outputTokens)} tok</span>
+              <button className="usage usage-button" title="Open context and usage details" onClick={() => setControlTab("session")}>{formatTokens(selected.usage.inputTokens + selected.usage.outputTokens)} used</button>
               <div className="header-actions">
                 <button className="btn ghost" onClick={() => openMenu("fork")}>
                   ⑂ Fork
@@ -422,28 +504,40 @@ export function App() {
                   setAppError(error instanceof Error ? error.message : String(error));
                 });
               }}
-            />
-            <QueueList
-              items={queueByThread[selected.id] ?? []}
-              onRemove={(messageId) => void stereo.removeQueued(selected.id, messageId)}
-              onMove={(messageId, direction) => void stereo.moveQueued(selected.id, messageId, direction)}
-            />
-            <Composer
-              key={selected.id}
-              draftKey={`thread:${selected.id}`}
-              placeholder={`Message ${AGENT_NAME[selected.agent.agent]} — it resumes right where the thread left off`}
-              running={selected.status === "running"}
-              onSubmit={async (text, attachments) => {
-                try {
-                  await stereo.sendMessage(selected.id, text, attachments);
-                  return true;
-                } catch (error) {
-                  setAppError(error instanceof Error ? error.message : String(error));
-                  return false;
-                }
+              onResolvePermission={(requestId, allowed) => {
+                void stereo.resolvePermission(requestId, allowed).catch((error) => setAppError(error instanceof Error ? error.message : String(error)));
               }}
-              onInterrupt={() => void stereo.interrupt(selected.id)}
             />
+            {selected.archivedAt ? (
+              <div className="archived-thread-bar">
+                <div><strong>Archived conversation</strong><span>Restore it to continue working in this thread.</span></div>
+                <button className="btn primary" onClick={() => void archiveThread(selected, false)}>Restore thread</button>
+              </div>
+            ) : (
+              <>
+                <QueueList
+                  items={queueByThread[selected.id] ?? []}
+                  onRemove={(messageId) => void stereo.removeQueued(selected.id, messageId)}
+                  onMove={(messageId, direction) => void stereo.moveQueued(selected.id, messageId, direction)}
+                />
+                <Composer
+                  key={selected.id}
+                  draftKey={`thread:${selected.id}`}
+                  placeholder={`Message ${AGENT_NAME[selected.agent.agent]} — it resumes right where the thread left off`}
+                  running={selected.status === "running"}
+                  onSubmit={async (text, attachments) => {
+                    try {
+                      await stereo.sendMessage(selected.id, text, attachments);
+                      return true;
+                    } catch (error) {
+                      setAppError(error instanceof Error ? error.message : String(error));
+                      return false;
+                    }
+                  }}
+                  onInterrupt={() => void stereo.interrupt(selected.id)}
+                />
+              </>
+            )}
           </>
         ) : (
           <NewThread
@@ -454,10 +548,12 @@ export function App() {
             agents={agents}
             onPickDir={() => void pickDir()}
             onUseDir={(d) => {
-              setDraftCwd(d);
-              rememberDir(d);
+              useDirectory(d);
             }}
-            onAgentChange={setDraftAgent}
+            onAgentChange={(agent) => {
+              setDraftAgent(agent);
+              if (agent.agent === "codex" && draftPermission === "ask") setDraftPermission("workspace-write");
+            }}
             onPermissionChange={setDraftPermission}
             onSubmit={createFromDraft}
           />
@@ -468,6 +564,8 @@ export function App() {
             <button onClick={() => setAppError(null)} aria-label="Dismiss">×</button>
           </div>
         )}
+        {selected && controlTab && <ControlCenter thread={selected} agents={agents} initialTab={controlTab} onClose={() => { setControlTab(null); void stereo.listProjects().then(setProjects); }} onThreadCreated={(thread) => { setControlTab(null); selectThread(thread.id); void stereo.listProjects().then(setProjects); }} onError={setAppError} />}
+        {paletteOpen && <CommandPalette commands={paletteCommands} onClose={() => setPaletteOpen(false)} />}
       </div>
     </div>
   );

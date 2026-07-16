@@ -9,6 +9,7 @@ interface Props {
   events: EventEnvelope[];
   live: string;
   onOpenLink(href: string): void;
+  onResolvePermission(requestId: string, allowed: boolean): void;
 }
 
 type TranscriptItem =
@@ -71,7 +72,9 @@ function ToolGroup({ envelopes, agent }: { envelopes: EventEnvelope[]; agent: Ag
   );
 }
 
-function EventRow({ envelope, agent, onOpenLink }: { envelope: EventEnvelope; agent: AgentId; onOpenLink(href: string): void }) {
+type PermissionState = boolean | "expired";
+
+function EventRow({ envelope, agent, onOpenLink, resolvedPermissions, onResolvePermission }: { envelope: EventEnvelope; agent: AgentId; onOpenLink(href: string): void; resolvedPermissions: Map<string, PermissionState>; onResolvePermission(requestId: string, allowed: boolean): void }) {
   const e = envelope.event;
   switch (e.type) {
     case "user-message":
@@ -114,6 +117,30 @@ function EventRow({ envelope, agent, onOpenLink }: { envelope: EventEnvelope; ag
       );
     case "tool":
       return null;
+    case "permission-request": {
+      const resolved = resolvedPermissions.get(e.request.id);
+      return (
+        <div className={`permission-card ${resolved === false || resolved === "expired" ? "denied" : ""}`}>
+          <div className="permission-card-icon">!</div>
+          <div className="permission-card-body">
+            <strong>{e.request.title}</strong>
+            <span>{e.request.detail || e.request.tool}</span>
+          </div>
+          {resolved === undefined ? (
+            <div className="permission-card-actions">
+              <button className="btn ghost" onClick={() => onResolvePermission(e.request.id, false)}>Deny</button>
+              <button className="btn primary" onClick={() => onResolvePermission(e.request.id, true)}>Allow once</button>
+            </div>
+          ) : <span className="permission-result">{resolved === "expired" ? "Expired" : resolved ? "Allowed" : "Denied"}</span>}
+        </div>
+      );
+    }
+    case "permission-response":
+      return null;
+    case "checkpoint":
+      return <div className="checkpoint-line"><span>◇</span> {e.label}</div>;
+    case "compacted":
+      return <div className="notice-line">↘ Context compacted to ~{formatTokens(e.approxTokens)} tokens{e.trimmedEvents ? ` · ${e.trimmedEvents} older events omitted` : ""}</div>;
     case "turn-end":
       return (
         <div className="turn-end">
@@ -133,10 +160,27 @@ function EventRow({ envelope, agent, onOpenLink }: { envelope: EventEnvelope; ag
   }
 }
 
-export function Thread({ thread, events, live, onOpenLink }: Props) {
+export function Thread({ thread, events, live, onOpenLink, onResolvePermission }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const items = useMemo(() => groupEvents(events), [events]);
+  const resolvedPermissions = useMemo(() => {
+    const states = new Map<string, PermissionState>();
+    const pending = new Set<string>();
+    for (const envelope of events) {
+      const event = envelope.event;
+      if (event.type === "permission-request") pending.add(event.request.id);
+      if (event.type === "permission-response") {
+        states.set(event.requestId, event.allowed);
+        pending.delete(event.requestId);
+      }
+      if (event.type === "interrupted" || event.type === "turn-end" || event.type === "error") {
+        for (const requestId of pending) states.set(requestId, "expired");
+        pending.clear();
+      }
+    }
+    return states;
+  }, [events]);
 
   useEffect(() => {
     const el = scroller.current;
@@ -157,7 +201,7 @@ export function Thread({ thread, events, live, onOpenLink }: Props) {
           item.type === "tools" ? (
             <ToolGroup key={`tools-${item.envelopes[0]?.seq}`} envelopes={item.envelopes} agent={thread.agent.agent} />
           ) : (
-            <EventRow key={item.envelope.seq} envelope={item.envelope} agent={thread.agent.agent} onOpenLink={onOpenLink} />
+            <EventRow key={item.envelope.seq} envelope={item.envelope} agent={thread.agent.agent} onOpenLink={onOpenLink} resolvedPermissions={resolvedPermissions} onResolvePermission={onResolvePermission} />
           ),
         )}
         {live.length > 0 && (

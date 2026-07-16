@@ -4,8 +4,12 @@ import type {
   AgentSelection,
   Attachment,
   EventEnvelope,
+  PermissionRequest,
+  Project,
+  ProjectInspection,
   QueuedMessage,
   Settings,
+  SessionInfo,
   Thread,
   ThreadEvent,
   TokenUsage,
@@ -14,22 +18,25 @@ import type { AgentAdapter, TurnHandle } from "./adapters/types.js";
 import { claudeAdapter } from "./adapters/claude.js";
 import { codexAdapter } from "./adapters/codex.js";
 import { applyAuthModeToProcess } from "./adapters/env.js";
-import { buildForkBriefing, buildResumeBriefing, buildReviewBriefing } from "./briefing.js";
+import { approxTokens, buildCompactBriefing, buildForkBriefing, buildResumeBriefing, buildReviewBriefing } from "./briefing.js";
 import { diffStats, diffText } from "./git.js";
+import { harnessFor } from "./harnesses.js";
+import { inspectProject, makeProject, projectId } from "./projects.js";
 import { ThreadStore } from "./store.js";
 
 const MAX_REVIEW_DIFF_CHARS = 200_000;
 
-function makeAdapter(thread: Thread, settings: Settings): AgentAdapter {
-  return thread.agent.agent === "claude"
-    ? claudeAdapter(thread.agent, thread.permission)
-    : codexAdapter(settings.authMode, thread.agent, thread.permission);
-}
+type AdapterFactory = (thread: Thread, settings: Settings) => AgentAdapter;
+const ADAPTERS: Record<Thread["agent"]["agent"], AdapterFactory> = {
+  claude: (thread) => claudeAdapter(thread.agent, thread.permission),
+  codex: (thread, settings) => codexAdapter(settings.authMode, thread.agent, thread.permission),
+};
 
 export interface CreateThreadInput {
   cwd: string;
   agent: AgentSelection;
   permission?: Thread["permission"];
+  projectId?: string;
 }
 
 function promptWithAttachments(text: string, attachments: Attachment[]): string {
@@ -64,6 +71,8 @@ export class Engine extends EventEmitter {
   private store: ThreadStore;
   private turns = new Map<string, TurnHandle>();
   private queues = new Map<string, QueuedMessage[]>();
+  private projects = new Map<string, Project>();
+  private permissionResolvers = new Map<string, { threadId: string; resolve: (allowed: boolean) => void }>();
 
   constructor(
     private settings: Settings,
@@ -73,9 +82,37 @@ export class Engine extends EventEmitter {
     applyAuthModeToProcess(settings.authMode);
     this.store = new ThreadStore(dataDir);
 
+    for (const project of this.store.loadProjects()) this.projects.set(project.id, project);
+    const savedQueues = this.store.loadQueues();
+    for (const [threadId, queue] of Object.entries(savedQueues)) this.queues.set(threadId, queue);
+
     const crashed: string[] = [];
+    let migrated = false;
     for (const thread of this.store.loadThreads()) {
-      thread.permission ??= this.settings.defaultPermission;
+      if (!thread.permission) {
+        thread.permission = this.settings.defaultPermission;
+        migrated = true;
+      }
+      // Legacy threads predate per-harness permission validation. A global
+      // Claude "ask" default must never migrate an existing Codex thread into
+      // a mode that codex exec cannot represent.
+      if (thread.agent.agent === "codex" && thread.permission === "ask") {
+        thread.permission = "workspace-write";
+        migrated = true;
+      }
+      if (!thread.projectId) {
+        thread.projectId = projectId(thread.cwd);
+        migrated = true;
+      }
+      if (thread.compactions === undefined) {
+        thread.compactions = 0;
+        migrated = true;
+      }
+      if (thread.lastTurnUsage === undefined) {
+        thread.lastTurnUsage = null;
+        migrated = true;
+      }
+      if (!this.projects.has(thread.projectId)) this.projects.set(thread.projectId, makeProject(thread.cwd));
       this.threads.set(thread.id, thread);
       this.seq.set(thread.id, this.store.lastSeq(thread.id));
       if (thread.status === "running") {
@@ -85,8 +122,18 @@ export class Engine extends EventEmitter {
         crashed.push(thread.id);
       }
     }
+    for (const [threadId, queue] of this.queues) {
+      if (!this.threads.has(threadId)) {
+        this.queues.delete(threadId);
+        continue;
+      }
+      const delivered = new Set(this.eventsFor(threadId).flatMap((event) => event.event.type === "user-message" && event.event.messageId ? [event.event.messageId] : []));
+      this.queues.set(threadId, queue.filter((message) => !delivered.has(message.id)));
+    }
     for (const id of crashed) this.emitEvent(id, { type: "interrupted" });
-    if (crashed.length > 0) this.store.saveThreads(this.list());
+    if (crashed.length > 0 || migrated) this.store.saveThreads(this.list());
+    this.persistProjects();
+    this.persistQueues();
   }
 
   updateSettings(settings: Settings): void {
@@ -102,19 +149,60 @@ export class Engine extends EventEmitter {
     return this.store.loadEvents(threadId);
   }
 
+  listProjects(): Project[] {
+    return [...this.projects.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  projectFor(projectIdValue: string): Project | null {
+    return this.projects.get(projectIdValue) ?? null;
+  }
+
+  inspectProject(projectIdValue: string): ProjectInspection {
+    const project = this.projects.get(projectIdValue);
+    if (!project) throw new Error("Unknown project");
+    return inspectProject(project);
+  }
+
+  updateProject(projectIdValue: string, update: Pick<Project, "name" | "defaults">): Project {
+    const project = this.projects.get(projectIdValue);
+    if (!project) throw new Error("Unknown project");
+    const name = update.name.trim();
+    if (!name) throw new Error("Project name cannot be empty");
+    if (update.defaults.permission === "ask" && update.defaults.agent?.agent === "codex") {
+      throw new Error("Codex exec does not expose interactive approvals");
+    }
+    project.name = name.slice(0, 80);
+    project.defaults = update.defaults;
+    project.updatedAt = new Date().toISOString();
+    this.persistProjects();
+    return project;
+  }
+
   createThread(input: CreateThreadInput): Thread {
     const now = new Date().toISOString();
+    const id = input.projectId ?? projectId(input.cwd);
+    let project = this.projects.get(id);
+    if (!project) {
+      project = makeProject(input.cwd);
+      this.projects.set(project.id, project);
+      this.persistProjects();
+    }
+    const permission = input.permission ?? project.defaults.permission ?? this.settings.defaultPermission;
+    if (permission === "ask" && input.agent.agent === "codex") throw new Error("Codex exec does not expose interactive approvals");
     const thread: Thread = {
       id: crypto.randomUUID(),
       title: "New thread",
       cwd: input.cwd,
+      projectId: project.id,
       kind: "chat",
       agent: input.agent,
-      permission: input.permission ?? this.settings.defaultPermission,
+      permission,
       status: "idle",
       createdAt: now,
       updatedAt: now,
       usage: { inputTokens: 0, outputTokens: 0 },
+      compactions: 0,
+      lastTurnUsage: null,
     };
     this.threads.set(thread.id, thread);
     this.persist();
@@ -135,7 +223,21 @@ export class Engine extends EventEmitter {
   setThreadPermission(threadId: string, permission: Thread["permission"]): Thread {
     const thread = this.threads.get(threadId);
     if (!thread) throw new Error(`Unknown thread ${threadId}`);
+    if (permission === "ask" && thread.agent.agent === "codex") throw new Error("Codex exec does not expose interactive approvals");
     thread.permission = permission;
+    thread.updatedAt = new Date().toISOString();
+    this.persist();
+    return thread;
+  }
+
+  setThreadArchived(threadId: string, archived: boolean): Thread {
+    const thread = this.threads.get(threadId);
+    if (!thread) throw new Error(`Unknown thread ${threadId}`);
+    if (archived && (thread.status === "running" || this.turns.has(threadId) || (this.queues.get(threadId)?.length ?? 0) > 0)) {
+      throw new Error("Finish or remove pending work before archiving this thread");
+    }
+    if (archived) thread.archivedAt = new Date().toISOString();
+    else delete thread.archivedAt;
     thread.updatedAt = new Date().toISOString();
     this.persist();
     return thread;
@@ -150,6 +252,7 @@ export class Engine extends EventEmitter {
     this.threads.delete(threadId);
     this.seq.delete(threadId);
     this.queues.delete(threadId);
+    this.persistQueues();
     this.store.deleteEvents(threadId);
     this.persist();
   }
@@ -161,11 +264,13 @@ export class Engine extends EventEmitter {
   sendMessage(threadId: string, text: string, attachments: Attachment[] = []): QueuedMessage {
     const thread = this.threads.get(threadId);
     if (!thread) throw new Error(`Unknown thread ${threadId}`);
+    if (thread.archivedAt) throw new Error("Restore this thread before sending another message");
     const queue = this.queues.get(threadId) ?? [];
     const message: QueuedMessage = { id: crypto.randomUUID(), text, attachments, createdAt: new Date().toISOString() };
     queue.push(message);
     this.queues.set(threadId, queue);
     this.emitQueue(threadId);
+    this.persistQueues();
     void this.pump(threadId);
     return message;
   }
@@ -177,6 +282,7 @@ export class Engine extends EventEmitter {
   removeQueued(threadId: string, messageId: string): void {
     const queue = this.queues.get(threadId) ?? [];
     this.queues.set(threadId, queue.filter((message) => message.id !== messageId));
+    this.persistQueues();
     this.emitQueue(threadId);
   }
 
@@ -186,11 +292,84 @@ export class Engine extends EventEmitter {
     const to = from + direction;
     if (from < 0 || to < 0 || to >= queue.length) return;
     [queue[from], queue[to]] = [queue[to]!, queue[from]!];
+    this.persistQueues();
     this.emitQueue(threadId);
   }
 
   interrupt(threadId: string): void {
+    for (const [requestId, pending] of this.permissionResolvers) {
+      if (pending.threadId === threadId) {
+        this.permissionResolvers.delete(requestId);
+        pending.resolve(false);
+      }
+    }
     this.turns.get(threadId)?.interrupt();
+  }
+
+  resumeQueued(): void {
+    for (const threadId of this.queues.keys()) void this.pump(threadId);
+  }
+
+  sessionInfo(threadId: string): SessionInfo {
+    const thread = this.threads.get(threadId);
+    if (!thread) throw new Error(`Unknown thread ${threadId}`);
+    const capabilities = harnessFor(thread.agent.agent).capabilities;
+    const events = this.eventsFor(threadId);
+    const compactIndex = events.findLastIndex((envelope) => envelope.event.type === "compacted");
+    const compactTokens = compactIndex >= 0 && events[compactIndex]!.event.type === "compacted" ? events[compactIndex]!.event.approxTokens : 0;
+    const activeEvents = compactIndex >= 0 ? events.slice(compactIndex + 1) : events;
+    const chars = activeEvents.reduce((total, envelope) => total + JSON.stringify(envelope.event).length, 0);
+    const usedTokens = compactTokens + approxTokens(chars);
+    const windowTokens = capabilities.contextWindow;
+    return {
+      threadId,
+      nativeSession: Boolean(thread.sessionId),
+      context: {
+        usedTokens,
+        windowTokens,
+        percent: windowTokens ? Math.min(100, Math.round((usedTokens / windowTokens) * 100)) : null,
+        source: "estimated",
+      },
+      cumulativeUsage: { ...thread.usage },
+      lastTurnUsage: thread.lastTurnUsage ? { ...thread.lastTurnUsage } : null,
+      compactions: thread.compactions,
+      queuedMessages: this.queuedFor(threadId).length,
+      checkpoints: events.filter((event) => event.event.type === "checkpoint").length,
+      capabilities,
+    };
+  }
+
+  compactThread(threadId: string): SessionInfo {
+    const thread = this.requireIdle(threadId);
+    const compiled = buildCompactBriefing(this.eventsFor(threadId), { fromAgent: thread.agent.agent, cwd: thread.cwd });
+    thread.sessionId = undefined;
+    thread.pendingBriefing = compiled.text;
+    thread.compactions += 1;
+    thread.updatedAt = new Date().toISOString();
+    this.emitEvent(threadId, { type: "compacted", approxTokens: compiled.approxTokens, trimmedEvents: compiled.trimmedEvents });
+    this.persist();
+    return this.sessionInfo(threadId);
+  }
+
+  addCheckpoint(threadId: string, label: string): void {
+    this.requireIdle(threadId);
+    const clean = label.trim() || `Checkpoint ${new Date().toLocaleString()}`;
+    this.emitEvent(threadId, { type: "checkpoint", label: clean.slice(0, 120) });
+  }
+
+  resolvePermission(requestId: string, allowed: boolean): void {
+    const pending = this.permissionResolvers.get(requestId);
+    if (!pending) throw new Error("This permission request is no longer active");
+    this.permissionResolvers.delete(requestId);
+    pending.resolve(allowed);
+  }
+
+  nativeResumeCommand(threadId: string): string | null {
+    const thread = this.threads.get(threadId);
+    if (!thread?.sessionId) return null;
+    const cwd = `'${thread.cwd.replaceAll("'", "'\\''")}'`;
+    const sid = `'${thread.sessionId.replaceAll("'", "'\\''")}'`;
+    return thread.agent.agent === "claude" ? `cd ${cwd} && claude --resume ${sid}` : `cd ${cwd} && codex resume ${sid}`;
   }
 
   /** Duplicate a thread to any model. The briefing rides along with the user's next message. */
@@ -201,7 +380,7 @@ export class Engine extends EventEmitter {
       fromAgent: source.agent.agent,
       cwd: source.cwd,
     });
-    const thread = this.createThread({ cwd: source.cwd, agent, permission: source.permission });
+    const thread = this.createThread({ cwd: source.cwd, projectId: source.projectId, agent, permission: source.permission });
     thread.title = source.title === "New thread" ? "New thread" : `⑂ ${source.title}`;
     thread.forkedFrom = { threadId: source.id, title: source.title };
     thread.pendingBriefing = compiled.text;
@@ -224,7 +403,7 @@ export class Engine extends EventEmitter {
       fromAgent: source.agent.agent,
       cwd: source.cwd,
     });
-    const thread = this.createThread({ cwd: source.cwd, agent, permission: source.permission });
+    const thread = this.createThread({ cwd: source.cwd, projectId: source.projectId, agent, permission: source.permission });
     thread.kind = "review";
     thread.title = `Review: ${source.title}`;
     thread.forkedFrom = { threadId: source.id, title: source.title };
@@ -263,6 +442,21 @@ export class Engine extends EventEmitter {
     this.emit("threads", this.listThreads());
   }
 
+  private persistProjects(): void {
+    this.store.saveProjects(this.listProjects());
+  }
+
+  private persistQueues(): void {
+    this.store.saveQueues(this.queues);
+  }
+
+  private requireIdle(threadId: string): Thread {
+    const thread = this.threads.get(threadId);
+    if (!thread) throw new Error(`Unknown thread ${threadId}`);
+    if (thread.status === "running" || this.turns.has(threadId)) throw new Error("Stop the running turn first");
+    return thread;
+  }
+
   private emitQueue(threadId: string): void {
     this.emit("queue", { threadId, queue: this.queuedFor(threadId) });
   }
@@ -277,7 +471,8 @@ export class Engine extends EventEmitter {
     if (thread.title === "New thread") {
       thread.title = (next.text.trim() || next.attachments[0]?.name || "New thread").split("\n")[0]!.slice(0, 80);
     }
-    this.emitEvent(threadId, { type: "user-message", text: next.text, attachments: next.attachments });
+    this.emitEvent(threadId, { type: "user-message", text: next.text, attachments: next.attachments, messageId: next.id });
+    this.persistQueues();
 
     let prompt = promptWithAttachments(next.text, next.attachments);
     if (thread.pendingBriefing) {
@@ -294,18 +489,41 @@ export class Engine extends EventEmitter {
     this.persist();
 
     let turnUsage: TokenUsage | null = null;
-    const adapter = makeAdapter(thread, this.settings);
     const callbacks = {
       onDelta: (text: string) => this.emit("delta", { threadId: thread.id, text }),
       onText: (text: string) => this.emitEvent(thread.id, { type: "agent-text", text }),
       onTool: (name: string, detail: string) => this.emitEvent(thread.id, { type: "tool", name, detail }),
       onUsage: (usage: TokenUsage) => {
         turnUsage = usage;
+        thread.lastTurnUsage = usage;
         thread.usage.inputTokens += usage.inputTokens;
         thread.usage.outputTokens += usage.outputTokens;
       },
+      onPermission: (tool: string, input: Record<string, unknown>, detail: string) => {
+        const id = crypto.randomUUID();
+        const request: PermissionRequest = {
+          id,
+          threadId: thread.id,
+          tool,
+          title: `${thread.agent.agent === "claude" ? "Claude" : "Codex"} wants to use ${tool}`,
+          detail,
+          input: {},
+          createdAt: new Date().toISOString(),
+        };
+        this.emitEvent(thread.id, { type: "permission-request", request });
+        return new Promise<boolean>((resolve) => {
+          this.permissionResolvers.set(id, { threadId: thread.id, resolve: (allowed) => {
+            this.emitEvent(thread.id, { type: "permission-response", requestId: id, allowed });
+            resolve(allowed);
+          }});
+        });
+      },
     };
     try {
+      // Adapter construction can validate provider-specific configuration and
+      // may throw. Keep it inside the lifecycle guard so no failure can strand
+      // a thread in the running state.
+      const adapter = ADAPTERS[thread.agent.agent](thread, this.settings);
       let attemptPrompt = prompt;
       let resume = thread.sessionId;
       for (let attempt = 0; ; attempt++) {
@@ -343,6 +561,12 @@ export class Engine extends EventEmitter {
         message: error instanceof Error ? error.message : String(error),
       });
     } finally {
+      for (const [requestId, pending] of this.permissionResolvers) {
+        if (pending.threadId === thread.id) {
+          this.permissionResolvers.delete(requestId);
+          pending.resolve(false);
+        }
+      }
       this.turns.delete(thread.id);
       thread.status = "idle";
       thread.updatedAt = new Date().toISOString();

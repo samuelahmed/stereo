@@ -66,9 +66,21 @@ export function claudeAdapter(spec: AgentSelection, permission: PermissionMode):
           // allowedTools entries are allow rules that pre-approve tools, so a
           // read-only turn must never list Bash/Edit/Write there, and
           // disallowedTools hard-blocks them at the harness level.
-          allowedTools: permission === "read-only" ? READ_TOOLS : TOOLS,
+          allowedTools: permission === "workspace-write" ? TOOLS : READ_TOOLS,
           ...(permission === "read-only" ? { disallowedTools: WRITE_TOOLS } : {}),
-          permissionMode: permission === "read-only" ? "plan" : "acceptEdits",
+          permissionMode: permission === "read-only" ? "plan" : permission === "ask" ? "default" : "acceptEdits",
+          ...(permission === "ask" ? {
+            canUseTool: async (toolName: string, toolInput: Record<string, unknown>, permissionOptions: { title?: string; description?: string; toolUseID: string }) => {
+              const allowed = await cb.onPermission(
+                toolName,
+                toolInput,
+                permissionOptions.title ?? permissionOptions.description ?? toolDetail(toolName, toolInput),
+              );
+              return allowed
+                ? { behavior: "allow" as const, updatedInput: toolInput, toolUseID: permissionOptions.toolUseID }
+                : { behavior: "deny" as const, message: "The user denied this action.", toolUseID: permissionOptions.toolUseID };
+            },
+          } : {}),
           includePartialMessages: true,
           abortController: abort,
           ...(spec.model ? { model: spec.model } : {}),
