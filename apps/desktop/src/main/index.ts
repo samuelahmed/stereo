@@ -6,6 +6,7 @@ import {
   detectClaude,
   detectCodex,
   type AgentSelection,
+  type Attachment,
   type EventEnvelope,
   type Settings,
   type Thread,
@@ -103,7 +104,9 @@ void app.whenReady().then(() => {
   ipcMain.handle("thread:delete", (_e, threadId: string) => engine.deleteThread(threadId));
   ipcMain.handle("thread:list", () => engine.listThreads());
   ipcMain.handle("thread:events", (_e, threadId: string) => engine.eventsFor(threadId));
-  ipcMain.handle("thread:send", (_e, threadId: string, text: string) => engine.sendMessage(threadId, text));
+  ipcMain.handle("thread:send", (_e, threadId: string, text: string, attachments?: Attachment[]) =>
+    engine.sendMessage(threadId, text, attachments),
+  );
   ipcMain.handle("thread:interrupt", (_e, threadId: string) => engine.interrupt(threadId));
   ipcMain.handle("thread:fork", (_e, threadId: string, agent: AgentSelection) => engine.forkThread(threadId, agent));
   ipcMain.handle("thread:review", (_e, threadId: string, agent: AgentSelection) => engine.reviewThread(threadId, agent));

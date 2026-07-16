@@ -1,4 +1,4 @@
-import type { AgentSelection } from "@stereo/core";
+import type { AgentSelection, Attachment } from "@stereo/core";
 import { shortPath } from "../labels";
 import { AgentPicker, type AgentCatalog } from "./AgentPicker";
 import { Composer } from "./Composer";
@@ -11,7 +11,7 @@ interface Props {
   onPickDir(): void;
   onUseDir(dir: string): void;
   onAgentChange(agent: AgentSelection): void;
-  onSubmit(text: string): boolean | Promise<boolean>;
+  onSubmit(text: string, attachments: Attachment[]): boolean | Promise<boolean>;
 }
 
 export function NewThread({ cwd, recentDirs, agent, agents, onPickDir, onUseDir, onAgentChange, onSubmit }: Props) {

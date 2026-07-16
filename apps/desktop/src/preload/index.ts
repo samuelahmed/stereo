@@ -1,5 +1,5 @@
-import { contextBridge, ipcRenderer } from "electron";
-import type { AgentSelection, EventEnvelope, Settings, Thread } from "@stereo/core";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
+import type { AgentSelection, Attachment, EventEnvelope, Settings, Thread } from "@stereo/core";
 
 const api = {
   getSettings: () => ipcRenderer.invoke("settings:get"),
@@ -7,12 +7,13 @@ const api = {
   detectAgents: () => ipcRenderer.invoke("agents:detect"),
   pickDir: () => ipcRenderer.invoke("dir:pick"),
   openDir: (directory: string) => ipcRenderer.invoke("dir:open", directory),
+  pathForFile: (file: File) => webUtils.getPathForFile(file),
   createThread: (input: { cwd: string; agent: AgentSelection }) => ipcRenderer.invoke("thread:create", input),
   renameThread: (threadId: string, title: string) => ipcRenderer.invoke("thread:rename", threadId, title),
   deleteThread: (threadId: string) => ipcRenderer.invoke("thread:delete", threadId),
   listThreads: () => ipcRenderer.invoke("thread:list"),
   threadEvents: (threadId: string) => ipcRenderer.invoke("thread:events", threadId),
-  sendMessage: (threadId: string, text: string) => ipcRenderer.invoke("thread:send", threadId, text),
+  sendMessage: (threadId: string, text: string, attachments?: Attachment[]) => ipcRenderer.invoke("thread:send", threadId, text, attachments),
   interrupt: (threadId: string) => ipcRenderer.invoke("thread:interrupt", threadId),
   forkThread: (threadId: string, agent: AgentSelection) => ipcRenderer.invoke("thread:fork", threadId, agent),
   reviewThread: (threadId: string, agent: AgentSelection) => ipcRenderer.invoke("thread:review", threadId, agent),

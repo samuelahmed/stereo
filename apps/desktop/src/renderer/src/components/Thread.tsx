@@ -76,7 +76,19 @@ function EventRow({ envelope, agent }: { envelope: EventEnvelope; agent: AgentId
       return (
         <div className="message-row user-message">
           <div className="message-label">You</div>
-          <div className="user-bubble">{e.text}</div>
+          <div className="user-bubble">
+            {e.text && <div>{e.text}</div>}
+            {e.attachments && e.attachments.length > 0 && (
+              <div className="message-attachments">
+                {e.attachments.map((attachment) => (
+                  <div className="message-attachment" key={attachment.path} title={attachment.path}>
+                    <span aria-hidden="true">{attachment.mimeType.startsWith("image/") ? "▧" : "◇"}</span>
+                    <span>{attachment.name}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       );
     case "briefing":
@@ -113,15 +125,7 @@ function EventRow({ envelope, agent }: { envelope: EventEnvelope; agent: AgentId
     case "error":
       return <div className="error-card">{e.message}</div>;
     case "diff":
-      return e.clean ? (
-        <div className="diff-line clean">✓ Working tree clean</div>
-      ) : (
-        <div className="diff-line">
-          <span className="dot">●</span> {e.stats.filesChanged} file{e.stats.filesChanged === 1 ? "" : "s"} changed{" "}
-          <span className="add">+{e.stats.additions}</span> <span className="del">−{e.stats.deletions}</span>
-          <span className="dim"> · Review in your editor</span>
-        </div>
-      );
+      return null;
     default:
       return null;
   }

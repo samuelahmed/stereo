@@ -28,6 +28,14 @@ export interface DiffStats {
   deletions: number;
 }
 
+/** A local file reference attached to a user message. The agent reads it from disk. */
+export interface Attachment {
+  path: string;
+  name: string;
+  mimeType: string;
+  size: number;
+}
+
 /**
  * A thread is a terminal session that never dies: one agent, one working
  * directory, a permanent transcript. The vendor session id is only an
@@ -50,7 +58,7 @@ export interface Thread {
 }
 
 export type ThreadEvent =
-  | { type: "user-message"; text: string }
+  | { type: "user-message"; text: string; attachments?: Attachment[] }
   | { type: "briefing"; text: string; trimmedEvents: number; approxTokens: number }
   | { type: "agent-text"; text: string }
   | { type: "tool"; name: string; detail: string }

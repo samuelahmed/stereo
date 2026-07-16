@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AgentSelection, AgentStatusInfo, DiffStats, EventEnvelope, Settings, Thread as ThreadT } from "@stereo/core";
+import type { AgentSelection, AgentStatusInfo, Attachment, DiffStats, EventEnvelope, Settings, Thread as ThreadT } from "@stereo/core";
 import { bridgeFailed, isMock, stereo } from "./bridge";
 import { AGENT_NAME, agentSummary, formatTokens, otherAgent, shortPath } from "./labels";
 import { AgentPicker } from "./components/AgentPicker";
@@ -148,6 +148,27 @@ export function App() {
       .catch(() => undefined);
   }, [selectedId]);
 
+  // Repository state belongs in the header and can change outside Stereo, so
+  // refresh it while the thread is visible instead of relying on old transcript events.
+  useEffect(() => {
+    const id = selectedId;
+    if (!id) return;
+    let active = true;
+    const refresh = () => {
+      if (document.visibilityState === "hidden") return;
+      void stereo.threadStats(id).then((stats) => {
+        if (active) setStatsByThread((previous) => ({ ...previous, [id]: stats }));
+      }).catch(() => undefined);
+    };
+    const timer = window.setInterval(refresh, 8_000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [selectedId]);
+
   const pickDir = useCallback(async () => {
     try {
       const picked = await stereo.pickDir();
@@ -161,13 +182,13 @@ export function App() {
   }, [rememberDir]);
 
   const createFromDraft = useCallback(
-    async (text: string): Promise<boolean> => {
+    async (text: string, attachments: Attachment[]): Promise<boolean> => {
       try {
         const cwd = draftCwd ?? (await stereo.pickDir());
         if (!cwd) return false;
         setDraftCwd(cwd);
         const thread = await stereo.createThread({ cwd, agent: draftAgent });
-        await stereo.sendMessage(thread.id, text);
+        await stereo.sendMessage(thread.id, text, attachments);
         rememberDir(cwd);
         selectThread(thread.id);
         return true;
@@ -333,9 +354,9 @@ export function App() {
               draftKey={`thread:${selected.id}`}
               placeholder={`Message ${AGENT_NAME[selected.agent.agent]} — it resumes right where the thread left off`}
               running={selected.status === "running"}
-              onSubmit={async (text) => {
+              onSubmit={async (text, attachments) => {
                 try {
-                  await stereo.sendMessage(selected.id, text);
+                  await stereo.sendMessage(selected.id, text, attachments);
                   return true;
                 } catch (error) {
                   setAppError(error instanceof Error ? error.message : String(error));

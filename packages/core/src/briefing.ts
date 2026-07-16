@@ -33,7 +33,14 @@ function renderEvent(envelope: EventEnvelope, agentLabel: string): TranscriptPar
   const e = envelope.event;
   switch (e.type) {
     case "user-message":
-      return { isUser: true, text: `## User\n${e.text}` };
+      return {
+        isUser: true,
+        text: `## User\n${e.text}${
+          e.attachments?.length
+            ? `\n\nAttached local files:\n${e.attachments.map((attachment) => `- ${attachment.path.replace(/[\r\n]/g, "")}`).join("\n")}`
+            : ""
+        }`,
+      };
     case "agent-text":
       return { isUser: false, text: `## ${agentLabel}\n${e.text}` };
     case "tool":

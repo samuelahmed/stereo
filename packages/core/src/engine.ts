@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import crypto from "node:crypto";
 import type {
   AgentSelection,
+  Attachment,
   EventEnvelope,
   Settings,
   Thread,
@@ -27,6 +28,26 @@ export interface CreateThreadInput {
   agent: AgentSelection;
 }
 
+interface PendingMessage {
+  text: string;
+  attachments: Attachment[];
+}
+
+function promptWithAttachments(text: string, attachments: Attachment[]): string {
+  if (attachments.length === 0) return text;
+  const paths = attachments.map((attachment) => {
+    const safePath = attachment.path.replace(/[\r\n]/g, "");
+    const kind = attachment.mimeType || "unknown type";
+    return `- ${safePath} (${kind})`;
+  });
+  return [
+    text,
+    "--- ATTACHED LOCAL FILES ---",
+    ...paths,
+    "These files were explicitly attached by the user. Inspect them with your available file/image tools as relevant to the request.",
+  ].join("\n\n");
+}
+
 /**
  * The Stereo engine. A thread is a permanent terminal session: one agent, one
  * cwd, an append-only transcript. Turns run in the user's working tree — no
@@ -42,7 +63,7 @@ export class Engine extends EventEmitter {
   private seq = new Map<string, number>();
   private store: ThreadStore;
   private turns = new Map<string, TurnHandle>();
-  private queues = new Map<string, string[]>();
+  private queues = new Map<string, PendingMessage[]>();
 
   constructor(
     private settings: Settings,
@@ -126,11 +147,11 @@ export class Engine extends EventEmitter {
    * Send a message. Messages queue like they do in the CLIs: if a turn is
    * running, the message waits and runs next.
    */
-  sendMessage(threadId: string, text: string): void {
+  sendMessage(threadId: string, text: string, attachments: Attachment[] = []): void {
     const thread = this.threads.get(threadId);
     if (!thread) throw new Error(`Unknown thread ${threadId}`);
     const queue = this.queues.get(threadId) ?? [];
-    queue.push(text);
+    queue.push({ text, attachments });
     this.queues.set(threadId, queue);
     void this.pump(threadId);
   }
@@ -216,13 +237,13 @@ export class Engine extends EventEmitter {
     if (next === undefined) return;
 
     if (thread.title === "New thread") {
-      thread.title = next.split("\n")[0]!.slice(0, 80);
+      thread.title = (next.text.trim() || next.attachments[0]?.name || "New thread").split("\n")[0]!.slice(0, 80);
     }
-    this.emitEvent(threadId, { type: "user-message", text: next });
+    this.emitEvent(threadId, { type: "user-message", text: next.text, attachments: next.attachments });
 
-    let prompt = next;
+    let prompt = promptWithAttachments(next.text, next.attachments);
     if (thread.pendingBriefing) {
-      prompt = `${thread.pendingBriefing}\n\n--- USER MESSAGE ---\n\n${next}`;
+      prompt = `${thread.pendingBriefing}\n\n--- USER MESSAGE ---\n\n${prompt}`;
       thread.pendingBriefing = undefined;
     }
     await this.runTurn(thread, prompt);

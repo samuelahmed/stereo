@@ -1,5 +1,6 @@
 import type {
   AgentSelection,
+  Attachment,
   AgentStatusInfo,
   DiffStats,
   EventEnvelope,
@@ -15,12 +16,13 @@ export interface StereoApi {
   detectAgents(): Promise<{ claude: AgentStatusInfo; codex: AgentStatusInfo }>;
   pickDir(): Promise<string | null>;
   openDir(directory: string): Promise<void>;
+  pathForFile(file: File): string;
   createThread(input: { cwd: string; agent: AgentSelection }): Promise<Thread>;
   renameThread(threadId: string, title: string): Promise<Thread>;
   deleteThread(threadId: string): Promise<void>;
   listThreads(): Promise<Thread[]>;
   threadEvents(threadId: string): Promise<EventEnvelope[]>;
-  sendMessage(threadId: string, text: string): Promise<void>;
+  sendMessage(threadId: string, text: string, attachments?: Attachment[]): Promise<void>;
   interrupt(threadId: string): Promise<void>;
   forkThread(threadId: string, agent: AgentSelection): Promise<Thread>;
   reviewThread(threadId: string, agent: AgentSelection): Promise<Thread>;
@@ -145,6 +147,7 @@ function createMock(): StereoApi {
     }),
     pickDir: async () => "/Users/you/acme-app",
     openDir: async () => undefined,
+    pathForFile: (file) => file.webkitRelativePath || file.name,
     createThread: async ({ cwd, agent }) => {
       const t = makeThread(cwd, agent);
       pushThreads();
@@ -168,11 +171,11 @@ function createMock(): StereoApi {
     },
     listThreads: async () => list(),
     threadEvents: async (threadId) => events.get(threadId) ?? [],
-    sendMessage: async (threadId, text) => {
+    sendMessage: async (threadId, text, attachments = []) => {
       const thread = threads.get(threadId);
       if (!thread) return;
-      if (thread.title === "New thread") thread.title = text.split("\n")[0]!.slice(0, 80);
-      emit(threadId, { type: "user-message", text });
+      if (thread.title === "New thread") thread.title = (text.trim() || attachments[0]?.name || "New thread").split("\n")[0]!.slice(0, 80);
+      emit(threadId, { type: "user-message", text, attachments });
       pushThreads();
       void runMockTurn(thread);
     },

@@ -737,6 +737,36 @@ button.chip:hover {
   white-space: pre-wrap;
 }
 
+.message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.user-bubble > .message-attachments:first-child {
+  margin-top: 0;
+}
+
+.message-attachment {
+  max-width: 240px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.14);
+  color: var(--text-2);
+  font: 10.5px/1.2 var(--mono);
+}
+
+.message-attachment span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .agent-message {
   width: 100%;
   user-select: text;
@@ -1321,18 +1351,32 @@ button.chip:hover {
 .composer-input {
   position: relative;
   width: min(100%, 860px);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-1);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.composer-input:focus-within {
+  border-color: var(--border-strong);
+}
+
+.composer-input.dragging {
+  border-color: var(--codex);
+  box-shadow: 0 0 0 3px rgba(124, 192, 245, 0.1);
 }
 
 .composer textarea {
   width: 100%;
   resize: none;
-  background: var(--bg-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  display: block;
+  background: transparent;
+  border: 0;
   color: var(--text-1);
   font-family: inherit;
   font-size: 13px;
-  padding: 11px 48px 11px 13px;
+  padding: 10px 48px 34px 13px;
   min-height: 62px;
   max-height: 220px;
   overflow-y: auto;
@@ -1345,7 +1389,104 @@ button.chip:hover {
 }
 
 .composer textarea:focus {
-  border-color: var(--border-strong);
+  outline: none;
+}
+
+.attachment-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 11px 0;
+}
+
+.attachment-chip {
+  max-width: 220px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 5px 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-2);
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.attachment-kind.image {
+  color: var(--claude);
+}
+
+.attachment-kind.file {
+  color: var(--codex);
+}
+
+.attachment-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-chip button {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.attachment-chip button:hover {
+  background: var(--bg-3);
+  color: var(--text-1);
+}
+
+.attachment-picker {
+  display: none;
+}
+
+.attach-btn {
+  position: absolute;
+  left: 9px;
+  bottom: 8px;
+  width: 25px;
+  height: 25px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.attach-btn:hover:not(:disabled) {
+  background: var(--bg-3);
+  color: var(--text-1);
+}
+
+.attach-btn:disabled {
+  opacity: 0.35;
+}
+
+.drop-target {
+  position: absolute;
+  z-index: 4;
+  inset: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px dashed rgba(124, 192, 245, 0.6);
+  border-radius: 8px;
+  background: rgba(19, 19, 22, 0.92);
+  color: var(--codex);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .send-btn {
@@ -1384,9 +1525,14 @@ button.chip:hover {
   width: min(100%, 860px);
 }
 
-.queue-note {
-  color: var(--warning);
+.composer-feedback {
+  min-height: 14px;
+  color: var(--text-3);
   font-size: 11px;
+}
+
+.composer-feedback.error {
+  color: var(--danger);
 }
 
 .composer-hint {
