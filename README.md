@@ -44,7 +44,8 @@ run on the native CLI subscriptions already signed in on the computer.
 
 ```sh
 pnpm install
-pnpm dev        # electron-vite dev, watches main + renderer
+pnpm dev     # electron-vite dev, watches main + renderer
+pnpm stereo  # build once, launch the Electron app, no file watcher
 pnpm typecheck
 pnpm build
 ```

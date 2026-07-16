@@ -5,6 +5,7 @@
   "description": "Every AI coding tool is mono. Stereo runs both frontier labs in one window.",
   "scripts": {
     "dev": "pnpm --filter @stereo/desktop dev",
+    "stereo": "pnpm --filter @stereo/desktop stereo",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck"
   },
