@@ -13,11 +13,13 @@ import {
   type Project,
   type Settings,
   type Thread,
+  defaultAgentSelection,
+  normalizeAgentSelection,
 } from "@stereo/core";
 import { openMarkdownLink } from "./link-opener.js";
 
 const DEFAULT_SETTINGS: Settings = {
-  defaultAgent: { agent: "claude", model: null, effort: null },
+  defaultAgent: defaultAgentSelection("claude"),
   defaultPermission: "workspace-write",
   editor: "auto",
   notifyOnComplete: false,
@@ -27,10 +29,11 @@ const EDITOR_PREFERENCES = new Set<EditorPreference>(["auto", "vscode", "cursor"
 
 function normalizeSettings(saved: Partial<Settings>): Settings {
   const merged = { ...DEFAULT_SETTINGS, ...saved };
+  const defaultAgent = normalizeAgentSelection(merged.defaultAgent);
   return {
-    defaultAgent: { agent: merged.defaultAgent.agent, model: null, effort: null },
+    defaultAgent,
     editor: EDITOR_PREFERENCES.has(merged.editor) ? merged.editor : "auto",
-    defaultPermission: merged.defaultAgent.agent === "codex" && merged.defaultPermission === "ask" ? "workspace-write" : merged.defaultPermission,
+    defaultPermission: defaultAgent.agent === "codex" && merged.defaultPermission === "ask" ? "workspace-write" : merged.defaultPermission,
     notifyOnComplete: Boolean(merged.notifyOnComplete),
   };
 }
@@ -181,6 +184,7 @@ void app.whenReady().then(() => {
 
   ipcMain.handle("thread:create", (_e, input: { cwd: string; projectId?: string; agent: AgentSelection; permission?: Thread["permission"] }) => engine.createThread(input));
   ipcMain.handle("thread:permission", (_e, threadId: string, permission: Thread["permission"]) => engine.setThreadPermission(threadId, permission));
+  ipcMain.handle("thread:agent", (_e, threadId: string, agent: AgentSelection) => engine.setThreadAgent(threadId, agent));
   ipcMain.handle("thread:rename", (_e, threadId: string, title: string) => engine.renameThread(threadId, title));
   ipcMain.handle("thread:archive", (_e, threadId: string, archived: boolean) => engine.setThreadArchived(threadId, archived));
   ipcMain.handle("thread:delete", (_e, threadId: string) => engine.deleteThread(threadId));

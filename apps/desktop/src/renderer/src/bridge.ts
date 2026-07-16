@@ -11,6 +11,7 @@ import type {
   Thread,
   ThreadEvent,
 } from "@stereo/core";
+import { AGENT_MODELS, defaultAgentSelection } from "@stereo/core/models";
 
 export interface StereoApi {
   getSettings(): Promise<Settings>;
@@ -27,6 +28,7 @@ export interface StereoApi {
   previewFile(filePath: string): Promise<string | null>;
   createThread(input: { cwd: string; projectId?: string; agent: AgentSelection; permission?: Thread["permission"] }): Promise<Thread>;
   setThreadPermission(threadId: string, permission: Thread["permission"]): Promise<Thread>;
+  setThreadAgent(threadId: string, agent: AgentSelection): Promise<Thread>;
   renameThread(threadId: string, title: string): Promise<Thread>;
   setThreadArchived(threadId: string, archived: boolean): Promise<Thread>;
   deleteThread(threadId: string): Promise<void>;
@@ -70,7 +72,7 @@ const MOCK_REPLY =
  */
 function createMock(): StereoApi {
   let settings: Settings = {
-    defaultAgent: { agent: "claude", model: null, effort: null },
+    defaultAgent: defaultAgentSelection("claude"),
     defaultPermission: "workspace-write",
     editor: "auto",
     notifyOnComplete: false,
@@ -163,12 +165,14 @@ function createMock(): StereoApi {
         installed: true,
         version: "2.1.198 (mock)",
         auth: "Claude login",
+        models: AGENT_MODELS.claude,
       },
       codex: {
         agent: "codex",
         installed: true,
         version: "codex-cli 0.137.0 (mock)",
         auth: "ChatGPT login",
+        models: AGENT_MODELS.codex,
       },
     }),
     pickDir: async () => "/Users/you/acme-app",
@@ -196,6 +200,16 @@ function createMock(): StereoApi {
       const thread = threads.get(threadId);
       if (!thread) throw new Error(`Unknown thread ${threadId}`);
       thread.permission = permission;
+      pushThreads();
+      return thread;
+    },
+    setThreadAgent: async (threadId, agent) => {
+      const thread = threads.get(threadId);
+      if (!thread) throw new Error(`Unknown thread ${threadId}`);
+      if (thread.status === "running") throw new Error("Wait for the running turn to finish before changing models");
+      if (thread.agent.agent !== agent.agent) throw new Error("Fork the thread to switch between Claude and Codex");
+      thread.agent = agent;
+      thread.updatedAt = new Date().toISOString();
       pushThreads();
       return thread;
     },

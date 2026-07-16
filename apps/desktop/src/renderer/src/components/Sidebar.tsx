@@ -316,7 +316,7 @@ export function Sidebar({
             </button>
             <button className="main-menu-action" onClick={() => { setMainMenu(false); onCommandPalette(); }}><span>Command palette</span><kbd>⌘⇧P</kbd></button>
             <div className="main-menu-section">
-              <div className="main-menu-label">Default harness</div>
+              <div className="main-menu-label">New thread default</div>
               <AgentPicker value={settings.defaultAgent} onChange={(defaultAgent) => onSettingsChange({ ...settings, defaultAgent })} agents={agents} />
             </div>
             <div className="main-menu-section harness-status">

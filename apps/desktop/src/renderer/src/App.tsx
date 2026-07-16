@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AgentSelection, AgentStatusInfo, Attachment, DiffStats, EventEnvelope, PermissionMode, Project, QueuedMessage, Settings, Thread as ThreadT } from "@stereo/core";
+import { defaultAgentSelection } from "@stereo/core/models";
 import { bridgeFailed, isMock, stereo } from "./bridge";
 import { AGENT_NAME, agentSummary, formatTokens, otherAgent, shortPath } from "./labels";
 import { AgentPicker } from "./components/AgentPicker";
@@ -46,10 +47,11 @@ export function App() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [recentDirs, setRecentDirs] = useState<string[]>(loadRecentDirs());
   const [draftCwd, setDraftCwd] = useState<string | null>(recentDirs[0] ?? null);
-  const [draftAgent, setDraftAgent] = useState<AgentSelection>({ agent: "claude", model: null, effort: null });
+  const [draftAgent, setDraftAgent] = useState<AgentSelection>(() => defaultAgentSelection("claude"));
   const [draftPermission, setDraftPermission] = useState<PermissionMode>("workspace-write");
   const [menu, setMenu] = useState<"fork" | "review" | null>(null);
-  const [menuAgent, setMenuAgent] = useState<AgentSelection>({ agent: "codex", model: null, effort: null });
+  const [menuAgent, setMenuAgent] = useState<AgentSelection>(() => defaultAgentSelection("codex"));
+  const [threadAgentDraft, setThreadAgentDraft] = useState<AgentSelection | null>(null);
   const [controlTab, setControlTab] = useState<"project" | "diagnostics" | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
@@ -184,7 +186,7 @@ export function App() {
     const project = projects.find((candidate) => candidate.cwd === draftCwd);
     const agent = project?.defaults.agent ?? settings.defaultAgent;
     const permission = project?.defaults.permission ?? settings.defaultPermission;
-    setDraftAgent({ agent: agent.agent, model: null, effort: null });
+    setDraftAgent(agent);
     setDraftPermission(permission === "ask" && agent.agent === "codex" ? "workspace-write" : permission);
   }, [booting, draftCwd, projects, settings]);
 
@@ -194,13 +196,14 @@ export function App() {
     const project = projects.find((candidate) => candidate.cwd === dir);
     const effectiveAgent = project?.defaults.agent ?? settings?.defaultAgent ?? draftAgent;
     const effectivePermission = project?.defaults.permission ?? settings?.defaultPermission ?? draftPermission;
-    setDraftAgent({ agent: effectiveAgent.agent, model: null, effort: null });
+    setDraftAgent(effectiveAgent);
     setDraftPermission(effectivePermission === "ask" && effectiveAgent.agent === "codex" ? "workspace-write" : effectivePermission);
   }, [draftAgent, draftPermission, projects, rememberDir, settings]);
 
   const selectThread = useCallback((id: string | null) => {
     setSelectedId(id);
     setMenu(null);
+    setThreadAgentDraft(null);
     if (id === null) localStorage.removeItem("stereo:selected-thread");
     else localStorage.setItem("stereo:selected-thread", id);
     if (id) setUnreadIds((previous) => {
@@ -341,8 +344,8 @@ export function App() {
       if (!selected) return;
       setMenuAgent(
         which === "review"
-          ? { agent: otherAgent(selected.agent.agent), model: null, effort: null }
-          : { agent: selected.agent.agent, model: null, effort: null },
+          ? defaultAgentSelection(otherAgent(selected.agent.agent))
+          : { ...selected.agent },
       );
       setMenu((prev) => (prev === which ? null : which));
     },
@@ -361,6 +364,16 @@ export function App() {
       setAppError(error instanceof Error ? error.message : String(error));
     }
   }, [selected, menu, menuAgent, selectThread]);
+
+  const saveThreadAgent = useCallback(async () => {
+    if (!selected || !threadAgentDraft) return;
+    try {
+      await stereo.setThreadAgent(selected.id, threadAgentDraft);
+      setThreadAgentDraft(null);
+    } catch (error) {
+      setAppError(error instanceof Error ? error.message : String(error));
+    }
+  }, [selected, threadAgentDraft]);
 
   const settingsChange = useCallback(
     (next: Settings) => {
@@ -452,7 +465,48 @@ export function App() {
               <button className="chip cwd-chip" title={`Open ${selected.cwd}`} onClick={() => void openDirectory(selected)}>
                 {shortPath(selected.cwd)}
               </button>
-              <button className={`chip agent-chip ${selected.agent.agent}`} title="Open native session diagnostics" onClick={() => setControlTab("diagnostics")}>{agentSummary(selected.agent)} <span aria-hidden="true">⌄</span></button>
+              <div className="agent-chip-wrap">
+                <button
+                  className={`chip agent-chip ${selected.agent.agent}`}
+                  title="Change model and thinking effort"
+                  onClick={() => {
+                    setMenu(null);
+                    setThreadAgentDraft((current) => current ? null : { ...selected.agent });
+                  }}
+                >
+                  {agentSummary(selected.agent)} <span aria-hidden="true">⌄</span>
+                </button>
+                {threadAgentDraft && (
+                  <>
+                    <div className="menu-dismiss" onClick={() => setThreadAgentDraft(null)} />
+                    <div className="action-menu model-menu" role="dialog" aria-label="Thread model settings">
+                      <div className="action-menu-title">Model for future turns in this thread</div>
+                      <AgentPicker
+                        value={threadAgentDraft}
+                        onChange={setThreadAgentDraft}
+                        agents={agents}
+                        allowAgentChange={false}
+                        disabled={selected.status === "running" || Boolean(selected.archivedAt) || (queueByThread[selected.id]?.length ?? 0) > 0}
+                      />
+                      {(selected.status === "running" || (queueByThread[selected.id]?.length ?? 0) > 0) && (
+                        <div className="model-menu-note">Finish the running and queued work before changing models.</div>
+                      )}
+                      {selected.archivedAt && <div className="model-menu-note">Restore this thread before changing models.</div>}
+                      <div className="model-menu-actions">
+                        <button className="btn ghost" onClick={() => setThreadAgentDraft(null)}>Cancel</button>
+                        <button
+                          className="btn primary"
+                          disabled={selected.status === "running" || Boolean(selected.archivedAt) || (queueByThread[selected.id]?.length ?? 0) > 0}
+                          onClick={() => void saveThreadAgent()}
+                        >
+                          Apply
+                        </button>
+                      </div>
+                      <div className="model-menu-note">To switch between Claude and Codex, fork the thread.</div>
+                    </div>
+                  </>
+                )}
+              </div>
               <select
                 className="chip permission-select"
                 aria-label="Thread access"

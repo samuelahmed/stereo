@@ -20,6 +20,7 @@ import { applySubscriptionAuthToProcess } from "./adapters/env.js";
 import { buildForkBriefing, buildResumeBriefing, buildReviewBriefing } from "./briefing.js";
 import { diffStats, diffText } from "./git.js";
 import { inspectProject, makeProject, projectId } from "./projects.js";
+import { normalizeAgentSelection, validateAgentSelection } from "./models.js";
 import { ThreadStore } from "./store.js";
 
 const MAX_REVIEW_DIFF_CHARS = 200_000;
@@ -87,6 +88,11 @@ export class Engine extends EventEmitter {
     const crashed: string[] = [];
     let migrated = false;
     for (const thread of this.store.loadThreads()) {
+      const normalizedAgent = normalizeAgentSelection(thread.agent);
+      if (thread.agent.model !== normalizedAgent.model || thread.agent.effort !== normalizedAgent.effort) {
+        thread.agent = normalizedAgent;
+        migrated = true;
+      }
       if (!thread.permission) {
         thread.permission = this.settings.defaultPermission;
         migrated = true;
@@ -114,6 +120,14 @@ export class Engine extends EventEmitter {
         // the thread is still resumable — mark the interruption and move on.
         thread.status = "idle";
         crashed.push(thread.id);
+      }
+    }
+    for (const project of this.projects.values()) {
+      if (!project.defaults.agent) continue;
+      const normalizedAgent = normalizeAgentSelection(project.defaults.agent);
+      if (project.defaults.agent.model !== normalizedAgent.model || project.defaults.agent.effort !== normalizedAgent.effort) {
+        project.defaults.agent = normalizedAgent;
+        migrated = true;
       }
     }
     for (const [threadId, queue] of this.queues) {
@@ -166,7 +180,7 @@ export class Engine extends EventEmitter {
     }
     project.name = name.slice(0, 80);
     project.defaults = {
-      agent: update.defaults.agent ? { agent: update.defaults.agent.agent, model: null, effort: null } : null,
+      agent: update.defaults.agent ? validateAgentSelection(update.defaults.agent) : null,
       permission: update.defaults.permission,
     };
     project.updatedAt = new Date().toISOString();
@@ -183,15 +197,16 @@ export class Engine extends EventEmitter {
       this.projects.set(project.id, project);
       this.persistProjects();
     }
+    const agent = validateAgentSelection(input.agent);
     const permission = input.permission ?? project.defaults.permission ?? this.settings.defaultPermission;
-    if (permission === "ask" && input.agent.agent === "codex") throw new Error("Codex exec does not expose interactive approvals");
+    if (permission === "ask" && agent.agent === "codex") throw new Error("Codex exec does not expose interactive approvals");
     const thread: Thread = {
       id: crypto.randomUUID(),
       title: "New thread",
       cwd: input.cwd,
       projectId: project.id,
       kind: "chat",
-      agent: { agent: input.agent.agent, model: null, effort: null },
+      agent,
       permission,
       status: "idle",
       createdAt: now,
@@ -220,6 +235,19 @@ export class Engine extends EventEmitter {
     if (!thread) throw new Error(`Unknown thread ${threadId}`);
     if (permission === "ask" && thread.agent.agent === "codex") throw new Error("Codex exec does not expose interactive approvals");
     thread.permission = permission;
+    thread.updatedAt = new Date().toISOString();
+    this.persist();
+    return thread;
+  }
+
+  setThreadAgent(threadId: string, agent: AgentSelection): Thread {
+    const thread = this.threads.get(threadId);
+    if (!thread) throw new Error(`Unknown thread ${threadId}`);
+    if (thread.archivedAt) throw new Error("Restore this thread before changing its model");
+    if (agent.agent !== thread.agent.agent) throw new Error("Fork the thread to switch between Claude and Codex");
+    if (thread.status === "running" || this.turns.has(threadId)) throw new Error("Wait for the running turn to finish before changing models");
+    if ((this.queues.get(threadId)?.length ?? 0) > 0) throw new Error("Finish or remove queued messages before changing models");
+    thread.agent = validateAgentSelection(agent);
     thread.updatedAt = new Date().toISOString();
     this.persist();
     return thread;
@@ -317,7 +345,11 @@ export class Engine extends EventEmitter {
     if (!thread?.sessionId) return null;
     const cwd = `'${thread.cwd.replaceAll("'", "'\\''")}'`;
     const sid = `'${thread.sessionId.replaceAll("'", "'\\''")}'`;
-    return thread.agent.agent === "claude" ? `cd ${cwd} && claude --resume ${sid}` : `cd ${cwd} && codex resume ${sid}`;
+    const model = `'${thread.agent.model.replaceAll("'", "'\\''")}'`;
+    const effort = `'${thread.agent.effort.replaceAll("'", "'\\''")}'`;
+    return thread.agent.agent === "claude"
+      ? `cd ${cwd} && claude --resume ${sid} --model ${model} --effort ${effort}`
+      : `cd ${cwd} && codex resume ${sid} --model ${model} --config model_reasoning_effort=${effort}`;
   }
 
   /** Duplicate a thread to any model. The briefing rides along with the user's next message. */

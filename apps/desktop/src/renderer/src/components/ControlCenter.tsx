@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { AgentStatusInfo, PermissionMode, ProjectInspection, Thread } from "@stereo/core";
 import { stereo } from "../bridge";
-import { AGENT_NAME } from "../labels";
+import { AGENT_NAME, agentSummary } from "../labels";
 import { AgentPicker } from "./AgentPicker";
 
 type Tab = "project" | "diagnostics";
@@ -79,7 +79,7 @@ export function ControlCenter({ thread, agents, initialTab = "project", onClose,
           {tab === "diagnostics" && (
             <>
               <div className="panel-heading"><div><h2>Diagnostics</h2><p>What Stereo knows about this native session and its recovery path.</p></div></div>
-              <dl className="diagnostic-list"><div><dt>Harness</dt><dd>{AGENT_NAME[thread.agent.agent]}</dd></div><div><dt>Native session</dt><dd>{thread.sessionId ? "Available" : "Not established"}</dd></div><div><dt>Working directory</dt><dd>{thread.cwd}</dd></div><div><dt>Stereo transcript</dt><dd>Saved locally</dd></div></dl>
+              <dl className="diagnostic-list"><div><dt>Model</dt><dd>{agentSummary(thread.agent)}</dd></div><div><dt>Native session</dt><dd>{thread.sessionId ? "Available" : "Not established"}</dd></div><div><dt>Working directory</dt><dd>{thread.cwd}</dd></div><div><dt>Stereo transcript</dt><dd>Saved locally</dd></div></dl>
               <section className="control-section"><h3>Native escape hatch</h3><p className="section-note">Resume this provider session in its own terminal when you need the native harness directly.</p><button className="btn" disabled={!thread.sessionId} onClick={() => void run(async () => { await stereo.copyResumeCommand(thread.id); setCopied(true); window.setTimeout(() => setCopied(false), 1800); })}>{copied ? "Copied resume command" : "Copy resume command"}</button></section>
             </>
           )}

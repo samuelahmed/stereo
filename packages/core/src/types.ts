@@ -1,10 +1,18 @@
 export type AgentId = "claude" | "codex";
 
-/** One agent seat. null model/effort = the CLI's own default. */
+/** One explicitly configured agent seat. Stereo never delegates this choice to CLI defaults. */
 export interface AgentSelection {
   agent: AgentId;
-  model: string | null;
-  effort: string | null;
+  model: string;
+  effort: string;
+}
+
+export interface AgentModelInfo {
+  id: string;
+  label: string;
+  description: string;
+  efforts: string[];
+  defaultEffort: string;
 }
 
 export type PermissionMode = "read-only" | "ask" | "workspace-write";
@@ -140,4 +148,5 @@ export interface AgentStatusInfo {
   installed: boolean;
   version: string | null;
   auth: string | null;
+  models: AgentModelInfo[];
 }

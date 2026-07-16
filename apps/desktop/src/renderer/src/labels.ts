@@ -1,9 +1,16 @@
 import type { AgentId, AgentSelection } from "@stereo/core";
+import { modelInfo } from "@stereo/core/models";
 
 export const AGENT_NAME: Record<AgentId, string> = { claude: "Claude", codex: "Codex" };
 
 export function agentSummary(sel: AgentSelection): string {
-  return AGENT_NAME[sel.agent];
+  const model = modelInfo(sel);
+  return `${AGENT_NAME[sel.agent]} · ${model?.label ?? sel.model} · ${effortLabel(sel.effort)}`;
+}
+
+export function effortLabel(effort: string): string {
+  if (effort === "xhigh") return "Extra high";
+  return effort.charAt(0).toUpperCase() + effort.slice(1);
 }
 
 export function otherAgent(agent: AgentId): AgentId {

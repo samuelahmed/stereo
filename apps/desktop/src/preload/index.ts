@@ -23,6 +23,7 @@ const api = {
   previewFile: (filePath: string) => ipcRenderer.invoke("file:preview", filePath),
   createThread: (input: { cwd: string; projectId?: string; agent: AgentSelection; permission?: Thread["permission"] }) => ipcRenderer.invoke("thread:create", input),
   setThreadPermission: (threadId: string, permission: Thread["permission"]) => ipcRenderer.invoke("thread:permission", threadId, permission),
+  setThreadAgent: (threadId: string, agent: AgentSelection) => ipcRenderer.invoke("thread:agent", threadId, agent),
   renameThread: (threadId: string, title: string) => ipcRenderer.invoke("thread:rename", threadId, title),
   setThreadArchived: (threadId: string, archived: boolean) => ipcRenderer.invoke("thread:archive", threadId, archived),
   deleteThread: (threadId: string) => ipcRenderer.invoke("thread:delete", threadId),
