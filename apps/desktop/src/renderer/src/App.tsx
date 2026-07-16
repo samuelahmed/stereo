@@ -93,8 +93,10 @@ export function App() {
         const stats = envelope.event.stats;
         setStatsByThread((prev) => ({ ...prev, [envelope.threadId]: stats }));
       }
+      // hasFocus() matches the main process's notification gate: a visible but
+      // unfocused window still earns the unread dot the notification points at.
       if (["turn-end", "interrupted", "error"].includes(envelope.event.type) &&
-        (selectedIdRef.current !== envelope.threadId || document.visibilityState === "hidden")) {
+        (selectedIdRef.current !== envelope.threadId || !document.hasFocus())) {
         setUnreadIds((previous) => new Set(previous).add(envelope.threadId));
       }
     });
@@ -138,10 +140,12 @@ export function App() {
   }, [unreadIds]);
 
   // Esc interrupts the selected thread's running turn — the Claude Code gesture.
+  // A dialog or open menu captures Esc for itself: dismissing UI chrome must
+  // never kill a running turn.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const current = selectedRef.current;
-      if (e.key === "Escape" && current?.status === "running" && !document.querySelector('[role="dialog"]')) {
+      if (e.key === "Escape" && current?.status === "running" && !document.querySelector('[role="dialog"], [role="menu"]')) {
         void stereo.interrupt(current.id);
       }
     };
@@ -303,11 +307,18 @@ export function App() {
   const settingsChange = useCallback(
     (next: Settings) => {
       if (!settings) return;
+      const previous = settings;
+      // Only sync the new-thread draft with the default that actually changed —
+      // toggling an unrelated setting must not clobber an in-progress draft.
+      const agentChanged = next.defaultAgent !== previous.defaultAgent;
+      const permissionChanged = next.defaultPermission !== previous.defaultPermission;
       setSettings(next);
-      setDraftAgent(next.defaultAgent);
-      setDraftPermission(next.defaultPermission);
+      if (agentChanged) setDraftAgent(next.defaultAgent);
+      if (permissionChanged) setDraftPermission(next.defaultPermission);
       void stereo.setSettings(next).catch((error) => {
-        setSettings(settings);
+        setSettings(previous);
+        if (agentChanged) setDraftAgent(previous.defaultAgent);
+        if (permissionChanged) setDraftPermission(previous.defaultPermission);
         setAppError(error instanceof Error ? error.message : String(error));
       });
     },

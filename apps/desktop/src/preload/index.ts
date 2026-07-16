@@ -7,7 +7,14 @@ const api = {
   detectAgents: () => ipcRenderer.invoke("agents:detect"),
   pickDir: () => ipcRenderer.invoke("dir:pick"),
   openDir: (directory: string) => ipcRenderer.invoke("dir:open", directory),
-  pathForFile: (file: File) => webUtils.getPathForFile(file),
+  pathForFile: (file: File) => {
+    const filePath = webUtils.getPathForFile(file);
+    // Register genuinely user-attached files with the main process so
+    // file:preview can refuse paths the user never attached. Synthetic Files
+    // constructed by page script resolve to "" and are never approved.
+    if (filePath) ipcRenderer.send("file:approve", filePath);
+    return filePath;
+  },
   previewFile: (filePath: string) => ipcRenderer.invoke("file:preview", filePath),
   createThread: (input: { cwd: string; agent: AgentSelection; permission?: Thread["permission"] }) => ipcRenderer.invoke("thread:create", input),
   setThreadPermission: (threadId: string, permission: Thread["permission"]) => ipcRenderer.invoke("thread:permission", threadId, permission),

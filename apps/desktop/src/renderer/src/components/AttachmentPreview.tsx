@@ -6,17 +6,40 @@ export function attachmentIsImage(attachment: Attachment): boolean {
   return attachment.mimeType.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg|heic)$/i.test(attachment.name);
 }
 
+// Previews are full-size files shipped over IPC as data URLs — cache successes
+// so remounts (thread switches, transcript rerenders) don't re-read the disk.
+// Failures are NOT cached: a path can become previewable later (e.g. a restored
+// draft is approved once it is sent). Bounded so a long image-heavy session
+// doesn't hold every historical screenshot in memory.
+const PREVIEW_CACHE_LIMIT = 48;
+const previewCache = new Map<string, string>();
+
+function cachePreview(path: string, dataUrl: string): void {
+  if (previewCache.size >= PREVIEW_CACHE_LIMIT) {
+    const oldest = previewCache.keys().next().value;
+    if (oldest !== undefined) previewCache.delete(oldest);
+  }
+  previewCache.set(path, dataUrl);
+}
+
 export function AttachmentPreview({ attachment }: { attachment: Attachment }) {
   const [open, setOpen] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [src, setSrc] = useState<string | null>(null);
+  const [src, setSrc] = useState<string | null>(() => previewCache.get(attachment.path) ?? null);
   useEffect(() => {
     if (!attachmentIsImage(attachment)) return;
+    const cached = previewCache.get(attachment.path);
+    if (cached) {
+      setSrc(cached);
+      return;
+    }
     let active = true;
     void stereo.previewFile(attachment.path).then((preview) => {
       if (!active) return;
-      if (preview) setSrc(preview);
-      else setFailed(true);
+      if (preview) {
+        cachePreview(attachment.path, preview);
+        setSrc(preview);
+      } else setFailed(true);
     }).catch(() => active && setFailed(true));
     return () => {
       active = false;

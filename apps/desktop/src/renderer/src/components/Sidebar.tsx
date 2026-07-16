@@ -224,7 +224,7 @@ export function Sidebar({
           <span className="main-menu-chevron">⌃</span>
         </button>
         {mainMenu && settings && (
-          <div className="main-menu" onPointerDown={(event) => event.stopPropagation()}>
+          <div className="main-menu" role="dialog" aria-label="Menu and settings" onPointerDown={(event) => event.stopPropagation()}>
             <div className="main-menu-heading">Stereo</div>
             <button className="main-menu-action" onClick={() => { onSelect(null); setMainMenu(false); }}>
               <span>New thread</span><kbd>⌘N</kbd>

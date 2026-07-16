@@ -5,7 +5,9 @@ import type { AgentAdapter, TurnCallbacks, TurnHandle, TurnOptions, TurnResult }
 type Rec = Record<string, unknown>;
 const rec = (v: unknown): Rec => (typeof v === "object" && v !== null ? (v as Rec) : {});
 
-const TOOLS = ["Read", "Edit", "Write", "Bash", "Glob", "Grep", "WebFetch", "WebSearch", "TodoWrite", "NotebookEdit"];
+const READ_TOOLS = ["Read", "Glob", "Grep", "WebFetch", "WebSearch", "TodoWrite"];
+const WRITE_TOOLS = ["Edit", "Write", "Bash", "NotebookEdit"];
+const TOOLS = [...READ_TOOLS, ...WRITE_TOOLS];
 
 /** Human-readable one-liner for a tool call — what Claude Code's own UI shows. */
 function toolDetail(name: string, input: unknown): string {
@@ -60,7 +62,12 @@ export function claudeAdapter(spec: AgentSelection, permission: PermissionMode):
         prompt: input(),
         options: {
           cwd: opts.cwd,
-          allowedTools: TOOLS,
+          // Read-only must hold even if plan mode's own enforcement doesn't:
+          // allowedTools entries are allow rules that pre-approve tools, so a
+          // read-only turn must never list Bash/Edit/Write there, and
+          // disallowedTools hard-blocks them at the harness level.
+          allowedTools: permission === "read-only" ? READ_TOOLS : TOOLS,
+          ...(permission === "read-only" ? { disallowedTools: WRITE_TOOLS } : {}),
           permissionMode: permission === "read-only" ? "plan" : "acceptEdits",
           includePartialMessages: true,
           abortController: abort,

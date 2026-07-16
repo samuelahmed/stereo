@@ -40,6 +40,18 @@ function saveSettings(settings: Settings): void {
 let engine: Engine;
 let win: BrowserWindow | null = null;
 
+// The renderer may only preview files the user actually attached: paths are
+// approved when the preload resolves a real dropped/picked file, when a
+// message is sent with attachments, or when persisted history mentions them.
+// This keeps "file:preview" from being an arbitrary-file read primitive.
+const previewablePaths = new Set<string>();
+
+function approveAttachments(attachments: Attachment[] | undefined): void {
+  for (const attachment of attachments ?? []) {
+    if (typeof attachment?.path === "string" && attachment.path) previewablePaths.add(attachment.path);
+  }
+}
+
 function createWindow(): void {
   win = new BrowserWindow({
     width: 1240,
@@ -113,7 +125,13 @@ void app.whenReady().then(() => {
     const error = await shell.openPath(directory);
     if (error) throw new Error(error);
   });
+  // Sent by the preload whenever it resolves a real on-disk File the user
+  // dropped, pasted, or picked — synthetic Files never resolve to a path.
+  ipcMain.on("file:approve", (_e, filePath: string) => {
+    if (typeof filePath === "string" && filePath) previewablePaths.add(filePath);
+  });
   ipcMain.handle("file:preview", async (_e, filePath: string) => {
+    if (typeof filePath !== "string" || !previewablePaths.has(filePath)) return null;
     const mimeByExtension: Record<string, string> = {
       ".png": "image/png",
       ".jpg": "image/jpeg",
@@ -135,10 +153,17 @@ void app.whenReady().then(() => {
   ipcMain.handle("thread:rename", (_e, threadId: string, title: string) => engine.renameThread(threadId, title));
   ipcMain.handle("thread:delete", (_e, threadId: string) => engine.deleteThread(threadId));
   ipcMain.handle("thread:list", () => engine.listThreads());
-  ipcMain.handle("thread:events", (_e, threadId: string) => engine.eventsFor(threadId));
-  ipcMain.handle("thread:send", (_e, threadId: string, text: string, attachments?: Attachment[]) =>
-    engine.sendMessage(threadId, text, attachments),
-  );
+  ipcMain.handle("thread:events", (_e, threadId: string) => {
+    const events = engine.eventsFor(threadId);
+    for (const envelope of events) {
+      if (envelope.event.type === "user-message") approveAttachments(envelope.event.attachments);
+    }
+    return events;
+  });
+  ipcMain.handle("thread:send", (_e, threadId: string, text: string, attachments?: Attachment[]) => {
+    approveAttachments(attachments);
+    return engine.sendMessage(threadId, text, attachments);
+  });
   ipcMain.handle("thread:interrupt", (_e, threadId: string) => engine.interrupt(threadId));
   ipcMain.handle("thread:fork", (_e, threadId: string, agent: AgentSelection) => engine.forkThread(threadId, agent));
   ipcMain.handle("thread:review", (_e, threadId: string, agent: AgentSelection) => engine.reviewThread(threadId, agent));
