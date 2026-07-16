@@ -1,22 +1,9 @@
 import type { AgentId, AgentSelection } from "@stereo/core";
-import { CLAUDE_EFFORTS, CLAUDE_MODELS, CODEX_EFFORTS, CODEX_MODELS } from "@stereo/core/catalog";
 
 export const AGENT_NAME: Record<AgentId, string> = { claude: "Claude", codex: "Codex" };
 
-/** Static fallback catalogs, replaced by live agent detection when available. */
-export const FALLBACK_MODELS: Record<AgentId, { value: string | null; label: string }[]> = {
-  claude: CLAUDE_MODELS,
-  codex: CODEX_MODELS,
-};
-
-export const FALLBACK_EFFORTS: Record<AgentId, (string | null)[]> = {
-  claude: CLAUDE_EFFORTS,
-  codex: CODEX_EFFORTS,
-};
-
 export function agentSummary(sel: AgentSelection): string {
-  const parts = [sel.model, sel.effort].filter(Boolean);
-  return parts.length > 0 ? `${AGENT_NAME[sel.agent]} · ${parts.join(" · ")}` : AGENT_NAME[sel.agent];
+  return AGENT_NAME[sel.agent];
 }
 
 export function otherAgent(agent: AgentId): AgentId {

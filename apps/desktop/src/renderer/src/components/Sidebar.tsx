@@ -331,13 +331,6 @@ export function Sidebar({
             </div>
             <div className="main-menu-section menu-form">
               <label>
-                <span>Billing</span>
-                <select value={settings.authMode} onChange={(event) => onSettingsChange({ ...settings, authMode: event.target.value as Settings["authMode"] })}>
-                  <option value="subscription">Subscription</option>
-                  <option value="api-key">API key</option>
-                </select>
-              </label>
-              <label>
                 <span>Default access</span>
                 <select value={settings.defaultPermission} onChange={(event) => onSettingsChange({ ...settings, defaultPermission: event.target.value as Settings["defaultPermission"] })}>
                   <option value="workspace-write">Workspace write</option>
@@ -360,7 +353,7 @@ export function Sidebar({
                 <input type="checkbox" checked={settings.notifyOnComplete} onChange={(event) => onSettingsChange({ ...settings, notifyOnComplete: event.target.checked })} />
               </label>
             </div>
-            <div className="permission-note">Access is a default for new threads. Claude can also ask before write actions; Codex exec currently supports fixed sandbox modes.</div>
+            <div className="permission-note">Stereo uses the native CLI subscriptions already signed in on this computer. Access is a default for new threads; Claude can also ask before write actions.</div>
             <div className="main-menu-shortcuts"><span>Search threads</span><kbd>⌘K</kbd><span>Session controls</span><kbd>⌘,</kbd><span>Interrupt</span><kbd>Esc</kbd></div>
           </div>
         )}

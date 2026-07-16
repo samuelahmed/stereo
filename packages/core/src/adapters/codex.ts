@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import type { AgentSelection, AuthMode, PermissionMode, TokenUsage } from "../types.js";
+import type { AgentSelection, PermissionMode, TokenUsage } from "../types.js";
 import type { AgentAdapter, TurnCallbacks, TurnHandle, TurnOptions, TurnResult } from "./types.js";
 import { childEnv } from "./env.js";
 
@@ -34,7 +34,7 @@ function itemDetail(item: Rec): string {
  * token-level deltas — item-level events are its native liveness, same as its
  * own CLI shows.
  */
-export function codexAdapter(authMode: AuthMode, spec: AgentSelection, permission: PermissionMode): AgentAdapter {
+export function codexAdapter(spec: AgentSelection, permission: PermissionMode): AgentAdapter {
   if (permission === "ask") throw new Error("Interactive approvals are not available through Codex exec yet");
   return {
     agent: "codex",
@@ -47,7 +47,7 @@ export function codexAdapter(authMode: AuthMode, spec: AgentSelection, permissio
 
       const child = spawn("codex", args, {
         cwd: opts.cwd,
-        env: childEnv(authMode),
+        env: childEnv(),
         stdio: ["ignore", "pipe", "pipe"],
       });
 
@@ -58,7 +58,6 @@ export function codexAdapter(authMode: AuthMode, spec: AgentSelection, permissio
         let threadId = opts.resumeSessionId;
         let usage: TokenUsage | null = null;
         let turnError: string | null = null;
-        let sawText = false;
         let stderrTail = "";
 
         const scanForUsage = (node: unknown): void => {
@@ -98,7 +97,6 @@ export function codexAdapter(authMode: AuthMode, spec: AgentSelection, permissio
           if (typeof itemType === "string") {
             if ((itemType === "agent_message" || itemType === "assistant_message") && phase.endsWith("completed")) {
               if (typeof item.text === "string" && item.text.trim()) {
-                sawText = true;
                 cb.onText(item.text);
               }
             } else if (itemType.includes("command") && phase.endsWith("started")) {
@@ -136,9 +134,9 @@ export function codexAdapter(authMode: AuthMode, spec: AgentSelection, permissio
             // Codex persists its rollout incrementally, so the thread on disk
             // survives the kill and `codex exec resume` continues it.
             resolve({ sessionId: threadId, interrupted: true });
-          } else if (turnError !== null && !sawText) {
+          } else if (turnError !== null) {
             reject(new Error(`codex turn failed: ${turnError}`));
-          } else if (code !== 0 && !sawText) {
+          } else if (code !== 0) {
             reject(new Error(`codex exited with code ${code}: ${stderrTail}`));
           } else {
             if (usage) cb.onUsage(usage);

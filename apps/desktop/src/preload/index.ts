@@ -36,9 +36,6 @@ const api = {
   threadQueue: (threadId: string) => ipcRenderer.invoke("thread:queue", threadId),
   removeQueued: (threadId: string, messageId: string) => ipcRenderer.invoke("thread:queue:remove", threadId, messageId),
   moveQueued: (threadId: string, messageId: string, direction: -1 | 1) => ipcRenderer.invoke("thread:queue:move", threadId, messageId, direction),
-  sessionInfo: (threadId: string) => ipcRenderer.invoke("session:info", threadId),
-  compactSession: (threadId: string) => ipcRenderer.invoke("session:compact", threadId),
-  addCheckpoint: (threadId: string, label: string) => ipcRenderer.invoke("session:checkpoint", threadId, label),
   resolvePermission: (requestId: string, allowed: boolean) => ipcRenderer.invoke("session:permission", requestId, allowed),
   copyResumeCommand: (threadId: string) => ipcRenderer.invoke("session:copy-resume", threadId),
   onEvent: (handler: (envelope: EventEnvelope) => void) => {

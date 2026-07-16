@@ -15,8 +15,8 @@ tree in place, and streams everything the agent does.
 - **Fork across labs** — every thread is stored as a vendor-neutral transcript, so any
   thread can be duplicated to the other model with a full context handoff (capped at
   ~200k tokens; trims are always visible, never silent).
-- **Pre-commit review** — one click runs the rival lab over exactly the uncommitted
-  diff you're about to ship, in a fresh review thread you can interrogate.
+- **Pre-commit review** — one click runs the rival lab read-only over the current
+  uncommitted diff, with any safety truncation shown in the review context.
 - **History forever** — every thread from both vendors, saved locally, browsable.
 - **Your workflow stays yours** — no worktrees, no generated commits, no merge UI.
   Git is the undo button, your editor is the review surface, commits come from you.
@@ -37,8 +37,8 @@ apps/desktop         Electron + React
 ```
 
 The transcript is the canonical record; the CLIs' own session ids are only an
-accelerator for native resume. Subscription mode hard-strips API-key env vars so
-agents always run on CLI logins.
+accelerator for native resume. Stereo hard-strips API-key env vars so agents always
+run on the native CLI subscriptions already signed in on the computer.
 
 ## Development
 

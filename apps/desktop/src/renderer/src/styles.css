@@ -777,15 +777,6 @@ button.chip:hover {
   flex-shrink: 0;
 }
 
-.usage-button {
-  padding: 3px 5px;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-}
-
-.usage-button:hover { color: var(--text-1); }
-
 .project-group + .project-group { margin-top: 12px; }
 
 .project-group-heading {
@@ -903,25 +894,9 @@ button.chip:hover {
 .panel-heading h2 { margin: 0 0 5px; font-size: 21px; font-weight: 680; }
 .panel-heading p { max-width: 620px; margin: 0; overflow: hidden; color: var(--text-3); font-size: 11.5px; line-height: 1.5; text-overflow: ellipsis; }
 .panel-heading .agent-chip { padding: 4px 9px; border: 1px solid var(--border); border-radius: 999px; font-size: 10px; }
-.metric-card { display: flex; min-width: 0; flex-direction: column; gap: 5px; padding: 15px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-2); }
-.metric-card > span, .metric-card small { color: var(--text-3); font-size: 10.5px; }
-.metric-card strong { font-family: var(--mono); font-size: 17px; font-weight: 600; }
-.context-card { margin-bottom: 10px; }
-.metric-row { display: flex; align-items: center; justify-content: space-between; }
-.metric-row strong { font-size: 13px; }
-.context-meter { overflow: hidden; height: 5px; margin: 7px 0 2px; border-radius: 999px; background: var(--bg-0); }
-.context-meter span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--codex), var(--claude)); }
-.context-card p { margin: 0; color: var(--text-3); font-size: 10.5px; }
-.metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .control-section { margin-top: 26px; }
 .control-section h3 { margin: 0 0 10px; color: var(--text-2); font-size: 11px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; }
 .section-note { margin: -4px 0 10px; color: var(--text-3); font-size: 11px; line-height: 1.5; }
-.action-row { display: flex; align-items: center; gap: 20px; padding: 12px 0; border-top: 1px solid var(--border); }
-.action-row > div { display: flex; flex: 1; flex-direction: column; gap: 3px; }
-.action-row strong { font-size: 12px; }
-.action-row span { color: var(--text-3); font-size: 11px; }
-.inline-form { display: flex; gap: 7px; }
-.inline-form input { flex: 1; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; outline: none; background: var(--bg-2); color: var(--text-1); }
 .project-defaults { display: flex; align-items: center; gap: 14px; padding: 14px; border: 1px solid var(--border); border-radius: 10px; }
 .project-defaults h3 { margin: 0 auto 0 0; }
 .project-defaults label { display: flex; align-items: center; gap: 7px; color: var(--text-3); font-size: 11px; }
@@ -939,15 +914,6 @@ button.chip:hover {
 .source-meta { display: flex; min-width: 90px; flex-direction: column; gap: 2px; color: var(--text-3); font-size: 9px; text-align: right; text-transform: uppercase; }
 .source-meta small { font-family: inherit; text-transform: none; }
 .config-warning { margin-top: 12px; padding: 9px 11px; border: 1px solid rgba(232,194,104,.22); border-radius: 7px; background: rgba(232,194,104,.05); color: var(--warning); font-size: 10.5px; }
-.config-warning.neutral { color: var(--text-3); border-color: var(--border); background: var(--bg-2); }
-.extension-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; }
-.extension-card { min-width: 0; padding: 13px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-2); }
-.extension-card > div { display: flex; align-items: center; gap: 8px; }
-.extension-card strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; }
-.extension-kind { margin-left: auto; color: var(--text-3); font-size: 9px; text-transform: uppercase; }
-.extension-card p { margin: 10px 0 5px; color: var(--text-2); font-size: 11px; }
-.extension-card small { display: block; overflow: hidden; color: var(--text-3); font-family: var(--mono); font-size: 9.5px; text-overflow: ellipsis; white-space: nowrap; }
-.panel-empty { padding: 30px; color: var(--text-3); text-align: center; }
 .diagnostic-list { overflow: hidden; margin: 0; border: 1px solid var(--border); border-radius: 10px; }
 .diagnostic-list div { display: grid; grid-template-columns: 180px 1fr; padding: 10px 12px; border-bottom: 1px solid var(--border); }
 .diagnostic-list div:last-child { border-bottom: 0; }

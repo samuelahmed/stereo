@@ -9,7 +9,6 @@ import type {
   ProjectInspection,
   QueuedMessage,
   Settings,
-  SessionInfo,
   Thread,
   ThreadEvent,
   TokenUsage,
@@ -17,19 +16,18 @@ import type {
 import type { AgentAdapter, TurnHandle } from "./adapters/types.js";
 import { claudeAdapter } from "./adapters/claude.js";
 import { codexAdapter } from "./adapters/codex.js";
-import { applyAuthModeToProcess } from "./adapters/env.js";
-import { approxTokens, buildCompactBriefing, buildForkBriefing, buildResumeBriefing, buildReviewBriefing } from "./briefing.js";
+import { applySubscriptionAuthToProcess } from "./adapters/env.js";
+import { buildForkBriefing, buildResumeBriefing, buildReviewBriefing } from "./briefing.js";
 import { diffStats, diffText } from "./git.js";
-import { harnessFor } from "./harnesses.js";
 import { inspectProject, makeProject, projectId } from "./projects.js";
 import { ThreadStore } from "./store.js";
 
 const MAX_REVIEW_DIFF_CHARS = 200_000;
 
-type AdapterFactory = (thread: Thread, settings: Settings) => AgentAdapter;
+type AdapterFactory = (thread: Thread) => AgentAdapter;
 const ADAPTERS: Record<Thread["agent"]["agent"], AdapterFactory> = {
   claude: (thread) => claudeAdapter(thread.agent, thread.permission),
-  codex: (thread, settings) => codexAdapter(settings.authMode, thread.agent, thread.permission),
+  codex: (thread) => codexAdapter(thread.agent, thread.permission),
 };
 
 export interface CreateThreadInput {
@@ -79,7 +77,7 @@ export class Engine extends EventEmitter {
     dataDir: string,
   ) {
     super();
-    applyAuthModeToProcess(settings.authMode);
+    applySubscriptionAuthToProcess();
     this.store = new ThreadStore(dataDir);
 
     for (const project of this.store.loadProjects()) this.projects.set(project.id, project);
@@ -102,10 +100,6 @@ export class Engine extends EventEmitter {
       }
       if (!thread.projectId) {
         thread.projectId = projectId(thread.cwd);
-        migrated = true;
-      }
-      if (thread.compactions === undefined) {
-        thread.compactions = 0;
         migrated = true;
       }
       if (thread.lastTurnUsage === undefined) {
@@ -138,7 +132,6 @@ export class Engine extends EventEmitter {
 
   updateSettings(settings: Settings): void {
     this.settings = settings;
-    applyAuthModeToProcess(settings.authMode);
   }
 
   listThreads(): Thread[] {
@@ -172,7 +165,10 @@ export class Engine extends EventEmitter {
       throw new Error("Codex exec does not expose interactive approvals");
     }
     project.name = name.slice(0, 80);
-    project.defaults = update.defaults;
+    project.defaults = {
+      agent: update.defaults.agent ? { agent: update.defaults.agent.agent, model: null, effort: null } : null,
+      permission: update.defaults.permission,
+    };
     project.updatedAt = new Date().toISOString();
     this.persistProjects();
     return project;
@@ -195,13 +191,12 @@ export class Engine extends EventEmitter {
       cwd: input.cwd,
       projectId: project.id,
       kind: "chat",
-      agent: input.agent,
+      agent: { agent: input.agent.agent, model: null, effort: null },
       permission,
       status: "idle",
       createdAt: now,
       updatedAt: now,
       usage: { inputTokens: 0, outputTokens: 0 },
-      compactions: 0,
       lastTurnUsage: null,
     };
     this.threads.set(thread.id, thread);
@@ -310,53 +305,6 @@ export class Engine extends EventEmitter {
     for (const threadId of this.queues.keys()) void this.pump(threadId);
   }
 
-  sessionInfo(threadId: string): SessionInfo {
-    const thread = this.threads.get(threadId);
-    if (!thread) throw new Error(`Unknown thread ${threadId}`);
-    const capabilities = harnessFor(thread.agent.agent).capabilities;
-    const events = this.eventsFor(threadId);
-    const compactIndex = events.findLastIndex((envelope) => envelope.event.type === "compacted");
-    const compactTokens = compactIndex >= 0 && events[compactIndex]!.event.type === "compacted" ? events[compactIndex]!.event.approxTokens : 0;
-    const activeEvents = compactIndex >= 0 ? events.slice(compactIndex + 1) : events;
-    const chars = activeEvents.reduce((total, envelope) => total + JSON.stringify(envelope.event).length, 0);
-    const usedTokens = compactTokens + approxTokens(chars);
-    const windowTokens = capabilities.contextWindow;
-    return {
-      threadId,
-      nativeSession: Boolean(thread.sessionId),
-      context: {
-        usedTokens,
-        windowTokens,
-        percent: windowTokens ? Math.min(100, Math.round((usedTokens / windowTokens) * 100)) : null,
-        source: "estimated",
-      },
-      cumulativeUsage: { ...thread.usage },
-      lastTurnUsage: thread.lastTurnUsage ? { ...thread.lastTurnUsage } : null,
-      compactions: thread.compactions,
-      queuedMessages: this.queuedFor(threadId).length,
-      checkpoints: events.filter((event) => event.event.type === "checkpoint").length,
-      capabilities,
-    };
-  }
-
-  compactThread(threadId: string): SessionInfo {
-    const thread = this.requireIdle(threadId);
-    const compiled = buildCompactBriefing(this.eventsFor(threadId), { fromAgent: thread.agent.agent, cwd: thread.cwd });
-    thread.sessionId = undefined;
-    thread.pendingBriefing = compiled.text;
-    thread.compactions += 1;
-    thread.updatedAt = new Date().toISOString();
-    this.emitEvent(threadId, { type: "compacted", approxTokens: compiled.approxTokens, trimmedEvents: compiled.trimmedEvents });
-    this.persist();
-    return this.sessionInfo(threadId);
-  }
-
-  addCheckpoint(threadId: string, label: string): void {
-    this.requireIdle(threadId);
-    const clean = label.trim() || `Checkpoint ${new Date().toLocaleString()}`;
-    this.emitEvent(threadId, { type: "checkpoint", label: clean.slice(0, 120) });
-  }
-
   resolvePermission(requestId: string, allowed: boolean): void {
     const pending = this.permissionResolvers.get(requestId);
     if (!pending) throw new Error("This permission request is no longer active");
@@ -376,11 +324,13 @@ export class Engine extends EventEmitter {
   forkThread(threadId: string, agent: AgentSelection): Thread {
     const source = this.threads.get(threadId);
     if (!source) throw new Error(`Unknown thread ${threadId}`);
+    if (source.status === "running" || this.turns.has(threadId)) throw new Error("Wait for the running turn to finish before forking it");
     const compiled = buildForkBriefing(this.eventsFor(threadId), {
       fromAgent: source.agent.agent,
       cwd: source.cwd,
     });
-    const thread = this.createThread({ cwd: source.cwd, projectId: source.projectId, agent, permission: source.permission });
+    const permission = agent.agent === "codex" && source.permission === "ask" ? "workspace-write" : source.permission;
+    const thread = this.createThread({ cwd: source.cwd, projectId: source.projectId, agent, permission });
     thread.title = source.title === "New thread" ? "New thread" : `⑂ ${source.title}`;
     thread.forkedFrom = { threadId: source.id, title: source.title };
     thread.pendingBriefing = compiled.text;
@@ -398,12 +348,13 @@ export class Engine extends EventEmitter {
   async reviewThread(threadId: string, agent: AgentSelection): Promise<Thread> {
     const source = this.threads.get(threadId);
     if (!source) throw new Error(`Unknown thread ${threadId}`);
+    if (source.status === "running" || this.turns.has(threadId)) throw new Error("Wait for the running turn to finish before reviewing its working tree");
     const diff = await diffText(source.cwd, MAX_REVIEW_DIFF_CHARS);
     const compiled = buildReviewBriefing(this.eventsFor(threadId), diff, {
       fromAgent: source.agent.agent,
       cwd: source.cwd,
     });
-    const thread = this.createThread({ cwd: source.cwd, projectId: source.projectId, agent, permission: source.permission });
+    const thread = this.createThread({ cwd: source.cwd, projectId: source.projectId, agent, permission: "read-only" });
     thread.kind = "review";
     thread.title = `Review: ${source.title}`;
     thread.forkedFrom = { threadId: source.id, title: source.title };
@@ -448,13 +399,6 @@ export class Engine extends EventEmitter {
 
   private persistQueues(): void {
     this.store.saveQueues(this.queues);
-  }
-
-  private requireIdle(threadId: string): Thread {
-    const thread = this.threads.get(threadId);
-    if (!thread) throw new Error(`Unknown thread ${threadId}`);
-    if (thread.status === "running" || this.turns.has(threadId)) throw new Error("Stop the running turn first");
-    return thread;
   }
 
   private emitQueue(threadId: string): void {
@@ -523,7 +467,7 @@ export class Engine extends EventEmitter {
       // Adapter construction can validate provider-specific configuration and
       // may throw. Keep it inside the lifecycle guard so no failure can strand
       // a thread in the running state.
-      const adapter = ADAPTERS[thread.agent.agent](thread, this.settings);
+      const adapter = ADAPTERS[thread.agent.agent](thread);
       let attemptPrompt = prompt;
       let resume = thread.sessionId;
       for (let attempt = 0; ; attempt++) {

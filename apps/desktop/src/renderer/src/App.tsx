@@ -50,7 +50,7 @@ export function App() {
   const [draftPermission, setDraftPermission] = useState<PermissionMode>("workspace-write");
   const [menu, setMenu] = useState<"fork" | "review" | null>(null);
   const [menuAgent, setMenuAgent] = useState<AgentSelection>({ agent: "codex", model: null, effort: null });
-  const [controlTab, setControlTab] = useState<"session" | "project" | "extensions" | "diagnostics" | null>(null);
+  const [controlTab, setControlTab] = useState<"project" | "diagnostics" | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
   const selected = useMemo(() => threads.find((t) => t.id === selectedId) ?? null, [threads, selectedId]);
@@ -58,6 +58,7 @@ export function App() {
   selectedRef.current = selected;
   const selectedIdRef = useRef<string | null>(null);
   selectedIdRef.current = selectedId;
+  const initialProjectDefaultsApplied = useRef(false);
 
   useEffect(() => {
     void Promise.all([
@@ -158,7 +159,7 @@ export function App() {
       }
       if ((e.metaKey || e.ctrlKey) && e.key === "," && current) {
         e.preventDefault();
-        setControlTab("session");
+        setControlTab("project");
         return;
       }
       if (e.key === "Escape" && current?.status === "running" && !document.querySelector('[role="dialog"], [role="menu"]')) {
@@ -177,17 +178,25 @@ export function App() {
     });
   }, []);
 
+  useEffect(() => {
+    if (booting || !settings || !draftCwd || initialProjectDefaultsApplied.current) return;
+    initialProjectDefaultsApplied.current = true;
+    const project = projects.find((candidate) => candidate.cwd === draftCwd);
+    const agent = project?.defaults.agent ?? settings.defaultAgent;
+    const permission = project?.defaults.permission ?? settings.defaultPermission;
+    setDraftAgent({ agent: agent.agent, model: null, effort: null });
+    setDraftPermission(permission === "ask" && agent.agent === "codex" ? "workspace-write" : permission);
+  }, [booting, draftCwd, projects, settings]);
+
   const useDirectory = useCallback((dir: string) => {
     setDraftCwd(dir);
     rememberDir(dir);
     const project = projects.find((candidate) => candidate.cwd === dir);
-    const nextAgent = project?.defaults.agent;
-    const effectiveAgent = nextAgent ?? draftAgent;
-    if (nextAgent) setDraftAgent(nextAgent);
-    if (project?.defaults.permission) {
-      setDraftPermission(project.defaults.permission === "ask" && effectiveAgent.agent === "codex" ? "workspace-write" : project.defaults.permission);
-    }
-  }, [draftAgent, projects, rememberDir]);
+    const effectiveAgent = project?.defaults.agent ?? settings?.defaultAgent ?? draftAgent;
+    const effectivePermission = project?.defaults.permission ?? settings?.defaultPermission ?? draftPermission;
+    setDraftAgent({ agent: effectiveAgent.agent, model: null, effort: null });
+    setDraftPermission(effectivePermission === "ask" && effectiveAgent.agent === "codex" ? "workspace-write" : effectivePermission);
+  }, [draftAgent, draftPermission, projects, rememberDir, settings]);
 
   const selectThread = useCallback((id: string | null) => {
     setSelectedId(id);
@@ -333,7 +342,7 @@ export function App() {
       setMenuAgent(
         which === "review"
           ? { agent: otherAgent(selected.agent.agent), model: null, effort: null }
-          : { ...selected.agent },
+          : { agent: selected.agent.agent, model: null, effort: null },
       );
       setMenu((prev) => (prev === which ? null : which));
     },
@@ -397,13 +406,10 @@ export function App() {
   const stats = selected ? statsByThread[selected.id] : null;
   const paletteCommands: PaletteCommand[] = [
     { id: "new", label: "New thread", detail: "Start a conversation in a project", group: "Stereo", shortcut: "⌘N", run: () => selectThread(null) },
-    { id: "session", label: "Session controls", detail: "Context, usage, compaction, and checkpoints", group: "Conversation", shortcut: "⌘,", disabled: !selected, run: () => setControlTab("session") },
-    { id: "project", label: "Project settings", detail: "Defaults and configuration provenance", group: "Project", disabled: !selected, run: () => setControlTab("project") },
-    { id: "extensions", label: "Extensions", detail: "MCP servers, hooks, skills, and plugins", group: "Project", disabled: !selected, run: () => setControlTab("extensions") },
-    { id: "compact", label: "Compact context", detail: "Rebuild a bounded portable context for the next turn", group: "Harness", disabled: !selected || selected.status === "running", run: () => { if (selected) void stereo.compactSession(selected.id).catch((error) => setAppError(error instanceof Error ? error.message : String(error))); } },
+    { id: "project", label: "Project settings", detail: "Defaults and configuration files", group: "Project", shortcut: "⌘,", disabled: !selected, run: () => setControlTab("project") },
     { id: "diagnostics", label: "Session diagnostics", detail: "Recovery state and native CLI escape hatch", group: "Harness", disabled: !selected, run: () => setControlTab("diagnostics") },
-    { id: "fork", label: "Fork conversation", detail: "Continue with another model or harness", group: "Conversation", disabled: !selected, run: () => openMenu("fork") },
-    { id: "review", label: "Review working tree", detail: "Ask the other harness for a second opinion", group: "Conversation", disabled: !selected, run: () => openMenu("review") },
+    { id: "fork", label: "Fork conversation", detail: "Continue with another harness", group: "Conversation", disabled: !selected || selected.status === "running", run: () => openMenu("fork") },
+    { id: "review", label: "Review working tree", detail: "Ask the other harness for a read-only second opinion", group: "Conversation", disabled: !selected || selected.status === "running", run: () => openMenu("review") },
     { id: "folder", label: "Open working folder", detail: selected?.cwd ?? "No active project", group: "Project", disabled: !selected, run: () => { if (selected) void openDirectory(selected); } },
     { id: "archive", label: selected?.archivedAt ? "Restore thread" : "Archive thread", detail: selected?.archivedAt ? "Return this conversation to its project" : "Hide this conversation without deleting it", group: "Conversation", disabled: !selected || (!selected.archivedAt && selected.status === "running"), run: () => { if (selected) void archiveThread(selected, !selected.archivedAt); } },
   ];
@@ -446,7 +452,7 @@ export function App() {
               <button className="chip cwd-chip" title={`Open ${selected.cwd}`} onClick={() => void openDirectory(selected)}>
                 {shortPath(selected.cwd)}
               </button>
-              <button className={`chip agent-chip ${selected.agent.agent}`} title="Open session and harness controls" onClick={() => setControlTab("session")}>{agentSummary(selected.agent)} <span aria-hidden="true">⌄</span></button>
+              <button className={`chip agent-chip ${selected.agent.agent}`} title="Open native session diagnostics" onClick={() => setControlTab("diagnostics")}>{agentSummary(selected.agent)} <span aria-hidden="true">⌄</span></button>
               <select
                 className="chip permission-select"
                 aria-label="Thread access"
@@ -469,12 +475,12 @@ export function App() {
                   </span>
                 ))}
               <span className="spacer" />
-              <button className="usage usage-button" title="Open context and usage details" onClick={() => setControlTab("session")}>{formatTokens(selected.usage.inputTokens + selected.usage.outputTokens)} used</button>
+              <span className="usage">{formatTokens(selected.usage.inputTokens + selected.usage.outputTokens)} used</span>
               <div className="header-actions">
-                <button className="btn ghost" onClick={() => openMenu("fork")}>
+                <button className="btn ghost" disabled={selected.status === "running"} onClick={() => openMenu("fork")}>
                   ⑂ Fork
                 </button>
-                <button className="btn" onClick={() => openMenu("review")}>
+                <button className="btn" disabled={selected.status === "running"} onClick={() => openMenu("review")}>
                   ◐ Review
                 </button>
                 {menu && (
@@ -564,7 +570,7 @@ export function App() {
             <button onClick={() => setAppError(null)} aria-label="Dismiss">×</button>
           </div>
         )}
-        {selected && controlTab && <ControlCenter thread={selected} agents={agents} initialTab={controlTab} onClose={() => { setControlTab(null); void stereo.listProjects().then(setProjects); }} onThreadCreated={(thread) => { setControlTab(null); selectThread(thread.id); void stereo.listProjects().then(setProjects); }} onError={setAppError} />}
+        {selected && controlTab && <ControlCenter thread={selected} agents={agents} initialTab={controlTab} onClose={() => { setControlTab(null); void stereo.listProjects().then(setProjects); }} onError={setAppError} />}
         {paletteOpen && <CommandPalette commands={paletteCommands} onClose={() => setPaletteOpen(false)} />}
       </div>
     </div>

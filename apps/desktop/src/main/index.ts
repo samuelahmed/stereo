@@ -17,7 +17,6 @@ import {
 import { openMarkdownLink } from "./link-opener.js";
 
 const DEFAULT_SETTINGS: Settings = {
-  authMode: "subscription",
   defaultAgent: { agent: "claude", model: null, effort: null },
   defaultPermission: "workspace-write",
   editor: "auto",
@@ -29,9 +28,10 @@ const EDITOR_PREFERENCES = new Set<EditorPreference>(["auto", "vscode", "cursor"
 function normalizeSettings(saved: Partial<Settings>): Settings {
   const merged = { ...DEFAULT_SETTINGS, ...saved };
   return {
-    ...merged,
+    defaultAgent: { agent: merged.defaultAgent.agent, model: null, effort: null },
     editor: EDITOR_PREFERENCES.has(merged.editor) ? merged.editor : "auto",
     defaultPermission: merged.defaultAgent.agent === "codex" && merged.defaultPermission === "ask" ? "workspace-write" : merged.defaultPermission,
+    notifyOnComplete: Boolean(merged.notifyOnComplete),
   };
 }
 
@@ -205,9 +205,6 @@ void app.whenReady().then(() => {
   ipcMain.handle("thread:queue:move", (_e, threadId: string, messageId: string, direction: -1 | 1) =>
     engine.moveQueued(threadId, messageId, direction),
   );
-  ipcMain.handle("session:info", (_e, threadId: string) => engine.sessionInfo(threadId));
-  ipcMain.handle("session:compact", (_e, threadId: string) => engine.compactThread(threadId));
-  ipcMain.handle("session:checkpoint", (_e, threadId: string, label: string) => engine.addCheckpoint(threadId, label));
   ipcMain.handle("session:permission", (_e, requestId: string, allowed: boolean) => engine.resolvePermission(requestId, allowed));
   ipcMain.handle("session:copy-resume", (_e, threadId: string) => {
     const command = engine.nativeResumeCommand(threadId);

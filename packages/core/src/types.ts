@@ -7,35 +7,14 @@ export interface AgentSelection {
   effort: string | null;
 }
 
-export type AuthMode = "subscription" | "api-key";
 export type PermissionMode = "read-only" | "ask" | "workspace-write";
 export type EditorPreference = "auto" | "vscode" | "cursor" | "zed" | "system";
 
 export interface Settings {
-  authMode: AuthMode;
   defaultAgent: AgentSelection;
   defaultPermission: PermissionMode;
   editor: EditorPreference;
   notifyOnComplete: boolean;
-}
-
-export interface HarnessCapabilities {
-  streaming: "token" | "item";
-  nativeResume: boolean;
-  interactivePermissions: boolean;
-  contextWindow: number | null;
-  configuration: boolean;
-  mcp: boolean;
-  hooks: boolean;
-  skills: boolean;
-  nativeCompact: boolean;
-}
-
-export interface HarnessDescriptor {
-  id: AgentId;
-  name: string;
-  shortName: string;
-  capabilities: HarnessCapabilities;
 }
 
 /** A repository-scoped workspace shared by any number of threads. */
@@ -51,7 +30,7 @@ export interface Project {
   };
 }
 
-export type ConfigScope = "managed" | "user" | "project" | "local";
+export type ConfigScope = "user" | "project" | "local";
 
 export interface ConfigSource {
   id: string;
@@ -63,20 +42,9 @@ export interface ConfigSource {
   summary: string;
 }
 
-export interface ExtensionInfo {
-  id: string;
-  harness: AgentId;
-  kind: "mcp" | "hook" | "skill" | "instruction" | "plugin";
-  name: string;
-  source: string;
-  enabled: boolean;
-  detail: string;
-}
-
 export interface ProjectInspection {
   project: Project;
   sources: ConfigSource[];
-  extensions: ExtensionInfo[];
   warnings: string[];
 }
 
@@ -132,25 +100,7 @@ export interface Thread {
   forkedFrom?: { threadId: string; title: string };
   /** Compiled handoff context that rides along with the next message, then clears. */
   pendingBriefing?: string;
-  compactions: number;
   lastTurnUsage?: TokenUsage | null;
-}
-
-export interface SessionInfo {
-  threadId: string;
-  nativeSession: boolean;
-  context: {
-    usedTokens: number;
-    windowTokens: number | null;
-    percent: number | null;
-    source: "estimated" | "provider";
-  };
-  cumulativeUsage: TokenUsage;
-  lastTurnUsage: TokenUsage | null;
-  compactions: number;
-  queuedMessages: number;
-  checkpoints: number;
-  capabilities: HarnessCapabilities;
 }
 
 export interface PermissionRequest {
@@ -190,8 +140,4 @@ export interface AgentStatusInfo {
   installed: boolean;
   version: string | null;
   auth: string | null;
-  /** Selectable models for this agent, freshest first. `null` value = CLI default. */
-  models: { value: string | null; label: string }[];
-  /** Selectable reasoning-effort levels. `null` = the CLI's own default. */
-  efforts: (string | null)[];
 }

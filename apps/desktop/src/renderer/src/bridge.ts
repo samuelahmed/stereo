@@ -8,11 +8,9 @@ import type {
   ProjectInspection,
   QueuedMessage,
   Settings,
-  SessionInfo,
   Thread,
   ThreadEvent,
 } from "@stereo/core";
-import { CLAUDE_EFFORTS, CLAUDE_MODELS, CODEX_EFFORTS, CODEX_MODELS } from "@stereo/core/catalog";
 
 export interface StereoApi {
   getSettings(): Promise<Settings>;
@@ -42,9 +40,6 @@ export interface StereoApi {
   threadQueue(threadId: string): Promise<QueuedMessage[]>;
   removeQueued(threadId: string, messageId: string): Promise<void>;
   moveQueued(threadId: string, messageId: string, direction: -1 | 1): Promise<void>;
-  sessionInfo(threadId: string): Promise<SessionInfo>;
-  compactSession(threadId: string): Promise<SessionInfo>;
-  addCheckpoint(threadId: string, label: string): Promise<void>;
   resolvePermission(requestId: string, allowed: boolean): Promise<void>;
   copyResumeCommand(threadId: string): Promise<string>;
   onEvent(handler: (envelope: EventEnvelope) => void): () => void;
@@ -75,7 +70,6 @@ const MOCK_REPLY =
  */
 function createMock(): StereoApi {
   let settings: Settings = {
-    authMode: "subscription",
     defaultAgent: { agent: "claude", model: null, effort: null },
     defaultPermission: "workspace-write",
     editor: "auto",
@@ -122,39 +116,11 @@ function createMock(): StereoApi {
       createdAt: now,
       updatedAt: now,
       usage: { inputTokens: 0, outputTokens: 0 },
-      compactions: 0,
       lastTurnUsage: null,
     };
     threads.set(id, thread);
     events.set(id, []);
     return thread;
-  };
-
-  const mockSessionInfo = (threadId: string): SessionInfo => {
-    const thread = threads.get(threadId)!;
-    const usedTokens = Math.round((thread.usage.inputTokens + thread.usage.outputTokens) * 0.72);
-    const windowTokens = thread.agent.agent === "claude" ? 1_000_000 : 258_000;
-    return {
-      threadId,
-      nativeSession: Boolean(thread.sessionId),
-      context: { usedTokens, windowTokens, percent: Math.round((usedTokens / windowTokens) * 100), source: "estimated" },
-      cumulativeUsage: thread.usage,
-      lastTurnUsage: thread.lastTurnUsage ?? null,
-      compactions: thread.compactions,
-      queuedMessages: 0,
-      checkpoints: (events.get(threadId) ?? []).filter((event) => event.event.type === "checkpoint").length,
-      capabilities: {
-        streaming: thread.agent.agent === "claude" ? "token" : "item",
-        nativeResume: true,
-        interactivePermissions: thread.agent.agent === "claude",
-        contextWindow: windowTokens,
-        configuration: true,
-        mcp: true,
-        hooks: true,
-        skills: true,
-        nativeCompact: false,
-      },
-    };
   };
 
   const runMockTurn = async (thread: Thread) => {
@@ -197,16 +163,12 @@ function createMock(): StereoApi {
         installed: true,
         version: "2.1.198 (mock)",
         auth: "Claude login",
-        models: CLAUDE_MODELS,
-        efforts: CLAUDE_EFFORTS,
       },
       codex: {
         agent: "codex",
         installed: true,
         version: "codex-cli 0.137.0 (mock)",
         auth: "ChatGPT login",
-        models: CODEX_MODELS,
-        efforts: CODEX_EFFORTS,
       },
     }),
     pickDir: async () => "/Users/you/acme-app",
@@ -218,7 +180,6 @@ function createMock(): StereoApi {
         { id: "agents-instructions", harness: "shared", scope: "project", label: "Repository instructions", path: `${mockProject.cwd}/AGENTS.md`, exists: true, summary: "42 lines · 3 KB" },
         { id: "codex-project", harness: "codex", scope: "project", label: "Codex project config", path: `${mockProject.cwd}/.codex/config.toml`, exists: false, summary: "Not configured" },
       ],
-      extensions: [{ id: "mock-skill", harness: "codex", kind: "skill", name: "release-check", source: `${mockProject.cwd}/.codex/skills/release-check`, enabled: true, detail: "Directory" }],
       warnings: [],
     }),
     updateProject: async (_projectId, update) => Object.assign(mockProject, update),
@@ -316,14 +277,6 @@ function createMock(): StereoApi {
     threadQueue: async () => [],
     removeQueued: async () => undefined,
     moveQueued: async () => undefined,
-    sessionInfo: async (threadId) => mockSessionInfo(threadId),
-    compactSession: async (threadId) => {
-      const thread = threads.get(threadId)!;
-      thread.compactions += 1;
-      emit(threadId, { type: "compacted", approxTokens: 18_000, trimmedEvents: 4 });
-      return mockSessionInfo(threadId);
-    },
-    addCheckpoint: async (threadId, label) => emit(threadId, { type: "checkpoint", label }),
     resolvePermission: async () => undefined,
     copyResumeCommand: async () => "codex resume mock-session",
     onEvent: (h) => {
