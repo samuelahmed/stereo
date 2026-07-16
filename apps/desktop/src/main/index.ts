@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 import {
@@ -93,8 +93,14 @@ void app.whenReady().then(() => {
     const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
+  ipcMain.handle("dir:open", async (_e, directory: string) => {
+    const error = await shell.openPath(directory);
+    if (error) throw new Error(error);
+  });
 
   ipcMain.handle("thread:create", (_e, input: { cwd: string; agent: AgentSelection }) => engine.createThread(input));
+  ipcMain.handle("thread:rename", (_e, threadId: string, title: string) => engine.renameThread(threadId, title));
+  ipcMain.handle("thread:delete", (_e, threadId: string) => engine.deleteThread(threadId));
   ipcMain.handle("thread:list", () => engine.listThreads());
   ipcMain.handle("thread:events", (_e, threadId: string) => engine.eventsFor(threadId));
   ipcMain.handle("thread:send", (_e, threadId: string, text: string) => engine.sendMessage(threadId, text));

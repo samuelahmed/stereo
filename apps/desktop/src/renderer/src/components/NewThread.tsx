@@ -11,10 +11,11 @@ interface Props {
   onPickDir(): void;
   onUseDir(dir: string): void;
   onAgentChange(agent: AgentSelection): void;
-  onSubmit(text: string): void;
+  onSubmit(text: string): boolean | Promise<boolean>;
 }
 
 export function NewThread({ cwd, recentDirs, agent, agents, onPickDir, onUseDir, onAgentChange, onSubmit }: Props) {
+  const unavailable = agents ? !agents[agent.agent].installed : false;
   return (
     <>
       <div className="hero">
@@ -46,8 +47,11 @@ export function NewThread({ cwd, recentDirs, agent, agents, onPickDir, onUseDir,
         </div>
       </div>
       <Composer
-        placeholder={cwd ? "Describe the task — the agent works right in your checkout" : "Choose a directory first, then describe the task"}
+        draftKey="new-thread"
+        placeholder={unavailable ? "Install the selected agent to start" : cwd ? "Describe the task — the agent works right in your checkout" : "Choose a directory first, then describe the task"}
         running={false}
+        disabled={unavailable}
+        hint={unavailable ? "This agent was not found on your system" : undefined}
         onSubmit={onSubmit}
       />
     </>

@@ -53,6 +53,14 @@ export class ThreadStore {
     return events.at(-1)?.seq ?? 0;
   }
 
+  deleteEvents(threadId: string): void {
+    try {
+      fs.unlinkSync(this.eventsFile(threadId));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
+
   private eventsFile(threadId: string): string {
     return path.join(this.eventsDir, `${threadId}.jsonl`);
   }

@@ -18,8 +18,20 @@ function loadRecentDirs(): string[] {
   }
 }
 
+function loadSidebarWidth(): number {
+  try {
+    const stored = Number(localStorage.getItem("stereo:sidebar-width"));
+    return Number.isFinite(stored) && stored >= 196 && stored <= 420 ? stored : 248;
+  } catch {
+    return 248;
+  }
+}
+
 export function App() {
   const [threads, setThreads] = useState<ThreadT[]>([]);
+  const [booting, setBooting] = useState(true);
+  const [appError, setAppError] = useState<string | null>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [eventsByThread, setEventsByThread] = useState<Record<string, EventEnvelope[]>>({});
   const [liveByThread, setLiveByThread] = useState<Record<string, string>>({});
@@ -37,12 +49,20 @@ export function App() {
   selectedRef.current = selected;
 
   useEffect(() => {
-    void stereo.getSettings().then((s) => {
-      setSettings(s);
-      setDraftAgent(s.defaultAgent);
-    });
-    void stereo.detectAgents().then(setAgents);
-    void stereo.listThreads().then(setThreads);
+    void Promise.all([
+      stereo.getSettings().then((s) => {
+        setSettings(s);
+        setDraftAgent(s.defaultAgent);
+      }),
+      stereo.detectAgents().then(setAgents),
+      stereo.listThreads().then((loaded) => {
+        setThreads(loaded);
+        const remembered = localStorage.getItem("stereo:selected-thread");
+        if (remembered && loaded.some((thread) => thread.id === remembered)) setSelectedId(remembered);
+      }),
+    ])
+      .catch((error) => setAppError(error instanceof Error ? error.message : String(error)))
+      .finally(() => setBooting(false));
 
     const offThreads = stereo.onThreads(setThreads);
     const offEvent = stereo.onEvent((envelope) => {
@@ -77,11 +97,17 @@ export function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!appError) return;
+    const timer = window.setTimeout(() => setAppError(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [appError]);
+
   // Esc interrupts the selected thread's running turn — the Claude Code gesture.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const current = selectedRef.current;
-      if (e.key === "Escape" && current?.status === "running") {
+      if (e.key === "Escape" && current?.status === "running" && !document.querySelector('[role="dialog"]')) {
         void stereo.interrupt(current.id);
       }
     };
@@ -100,39 +126,90 @@ export function App() {
   const selectThread = useCallback((id: string | null) => {
     setSelectedId(id);
     setMenu(null);
-    if (id === null) return;
-    void stereo.threadEvents(id).then((history) => {
-      setEventsByThread((prev) => {
-        const seen = new Set((prev[id] ?? []).map((e) => e.seq));
-        const merged = [...(prev[id] ?? []), ...history.filter((e) => !seen.has(e.seq))];
-        merged.sort((a, b) => a.seq - b.seq);
-        return { ...prev, [id]: merged };
-      });
-    });
-    void stereo.threadStats(id).then((stats) => setStatsByThread((prev) => ({ ...prev, [id]: stats })));
+    if (id === null) localStorage.removeItem("stereo:selected-thread");
+    else localStorage.setItem("stereo:selected-thread", id);
   }, []);
 
+  useEffect(() => {
+    const id = selectedId;
+    if (!id) return;
+    void stereo.threadEvents(id)
+      .then((history) => {
+        setEventsByThread((prev) => {
+          const seen = new Set((prev[id] ?? []).map((e) => e.seq));
+          const merged = [...(prev[id] ?? []), ...history.filter((e) => !seen.has(e.seq))];
+          merged.sort((a, b) => a.seq - b.seq);
+          return { ...prev, [id]: merged };
+        });
+      })
+      .catch((error) => setAppError(error instanceof Error ? error.message : String(error)));
+    void stereo.threadStats(id)
+      .then((stats) => setStatsByThread((prev) => ({ ...prev, [id]: stats })))
+      .catch(() => undefined);
+  }, [selectedId]);
+
   const pickDir = useCallback(async () => {
-    const picked = await stereo.pickDir();
-    if (picked) {
-      setDraftCwd(picked);
-      rememberDir(picked);
+    try {
+      const picked = await stereo.pickDir();
+      if (picked) {
+        setDraftCwd(picked);
+        rememberDir(picked);
+      }
+    } catch (error) {
+      setAppError(error instanceof Error ? error.message : String(error));
     }
   }, [rememberDir]);
 
   const createFromDraft = useCallback(
-    async (text: string) => {
-      if (!draftCwd) {
-        await pickDir();
-        return;
+    async (text: string): Promise<boolean> => {
+      try {
+        const cwd = draftCwd ?? (await stereo.pickDir());
+        if (!cwd) return false;
+        setDraftCwd(cwd);
+        const thread = await stereo.createThread({ cwd, agent: draftAgent });
+        await stereo.sendMessage(thread.id, text);
+        rememberDir(cwd);
+        selectThread(thread.id);
+        return true;
+      } catch (error) {
+        setAppError(error instanceof Error ? error.message : String(error));
+        return false;
       }
-      const thread = await stereo.createThread({ cwd: draftCwd, agent: draftAgent });
-      await stereo.sendMessage(thread.id, text);
-      rememberDir(draftCwd);
-      selectThread(thread.id);
     },
-    [draftCwd, draftAgent, pickDir, rememberDir, selectThread],
+    [draftCwd, draftAgent, rememberDir, selectThread],
   );
+
+  const resizeSidebar = useCallback((width: number) => {
+    const next = Math.max(196, Math.min(420, Math.round(width)));
+    setSidebarWidth(next);
+    try {
+      localStorage.setItem("stereo:sidebar-width", String(next));
+    } catch {
+      // Resizing still works for this session when storage is unavailable.
+    }
+  }, []);
+
+  const renameThread = useCallback(async (thread: ThreadT, title: string) => {
+    await stereo.renameThread(thread.id, title);
+  }, []);
+
+  const openDirectory = useCallback(async (thread: ThreadT) => {
+    try {
+      await stereo.openDir(thread.cwd);
+    } catch (error) {
+      setAppError(error instanceof Error ? error.message : String(error));
+    }
+  }, []);
+
+  const deleteThread = useCallback(async (thread: ThreadT) => {
+    await stereo.deleteThread(thread.id);
+    if (selectedId === thread.id) selectThread(threads.find((candidate) => candidate.id !== thread.id)?.id ?? null);
+    setEventsByThread((previous) => {
+      const next = { ...previous };
+      delete next[thread.id];
+      return next;
+    });
+  }, [selectedId, selectThread, threads]);
 
   const openMenu = useCallback(
     (which: "fork" | "review") => {
@@ -151,9 +228,13 @@ export function App() {
     if (!selected || !menu) return;
     const action = menu;
     setMenu(null);
-    const thread =
-      action === "fork" ? await stereo.forkThread(selected.id, menuAgent) : await stereo.reviewThread(selected.id, menuAgent);
-    selectThread(thread.id);
+    try {
+      const thread =
+        action === "fork" ? await stereo.forkThread(selected.id, menuAgent) : await stereo.reviewThread(selected.id, menuAgent);
+      selectThread(thread.id);
+    } catch (error) {
+      setAppError(error instanceof Error ? error.message : String(error));
+    }
   }, [selected, menu, menuAgent, selectThread]);
 
   const authModeChange = useCallback(
@@ -161,7 +242,10 @@ export function App() {
       if (!settings) return;
       const next = { ...settings, authMode: mode };
       setSettings(next);
-      void stereo.setSettings(next);
+      void stereo.setSettings(next).catch((error) => {
+        setSettings(settings);
+        setAppError(error instanceof Error ? error.message : String(error));
+      });
     },
     [settings],
   );
@@ -186,19 +270,26 @@ export function App() {
         selectedId={selectedId}
         agents={agents}
         settings={settings}
+        width={sidebarWidth}
+        onWidthChange={resizeSidebar}
         onSelect={selectThread}
+        onRename={renameThread}
+        onDelete={deleteThread}
+        onOpenDirectory={openDirectory}
         onAuthModeChange={authModeChange}
       />
       <div className="main">
         {isMock && <div className="mock-banner">Browser design preview — mock engine. Run the Stereo desktop app for real agents.</div>}
-        {selected ? (
+        {booting ? (
+          <div className="app-loading"><span className="loading-spinner" /> Loading your workspace…</div>
+        ) : selected ? (
           <>
             <div className="thread-header">
               <span className={`status-dot ${selected.agent.agent} ${selected.status === "running" ? "pulse" : ""}`} />
               <span className="title">{selected.title}</span>
-              <span className="chip" title={selected.cwd}>
+              <button className="chip cwd-chip" title={`Open ${selected.cwd}`} onClick={() => void openDirectory(selected)}>
                 {shortPath(selected.cwd)}
-              </span>
+              </button>
               <span className={`chip agent-chip ${selected.agent.agent}`}>{agentSummary(selected.agent)}</span>
               {stats &&
                 (stats.filesChanged === 0 ? (
@@ -219,25 +310,38 @@ export function App() {
                   ◐ Review
                 </button>
                 {menu && (
-                  <div className="action-menu">
-                    <div className="action-menu-title">
-                      {menu === "fork"
-                        ? "Duplicate this thread — full context handoff to any model"
-                        : "Second opinion on the uncommitted diff"}
+                  <>
+                    <div className="menu-dismiss" onClick={() => setMenu(null)} />
+                    <div className="action-menu">
+                      <div className="action-menu-title">
+                        {menu === "fork"
+                          ? "Duplicate this thread — full context handoff to any model"
+                          : "Second opinion on the uncommitted diff"}
+                      </div>
+                      <AgentPicker value={menuAgent} onChange={setMenuAgent} agents={agents} />
+                      <button className="btn primary" onClick={() => void confirmMenu()}>
+                        {menu === "fork" ? `Fork with ${AGENT_NAME[menuAgent.agent]}` : `Review with ${AGENT_NAME[menuAgent.agent]}`}
+                      </button>
                     </div>
-                    <AgentPicker value={menuAgent} onChange={setMenuAgent} agents={agents} />
-                    <button className="btn primary" onClick={() => void confirmMenu()}>
-                      {menu === "fork" ? `Fork with ${AGENT_NAME[menuAgent.agent]}` : `Review with ${AGENT_NAME[menuAgent.agent]}`}
-                    </button>
-                  </div>
+                  </>
                 )}
               </div>
             </div>
             <Thread thread={selected} events={eventsByThread[selected.id] ?? []} live={liveByThread[selected.id] ?? ""} />
             <Composer
+              key={selected.id}
+              draftKey={`thread:${selected.id}`}
               placeholder={`Message ${AGENT_NAME[selected.agent.agent]} — it resumes right where the thread left off`}
               running={selected.status === "running"}
-              onSubmit={(text) => void stereo.sendMessage(selected.id, text)}
+              onSubmit={async (text) => {
+                try {
+                  await stereo.sendMessage(selected.id, text);
+                  return true;
+                } catch (error) {
+                  setAppError(error instanceof Error ? error.message : String(error));
+                  return false;
+                }
+              }}
               onInterrupt={() => void stereo.interrupt(selected.id)}
             />
           </>
@@ -253,8 +357,14 @@ export function App() {
               rememberDir(d);
             }}
             onAgentChange={setDraftAgent}
-            onSubmit={(text) => void createFromDraft(text)}
+            onSubmit={createFromDraft}
           />
+        )}
+        {appError && (
+          <div className="toast error-toast" role="alert">
+            <span>{appError}</span>
+            <button onClick={() => setAppError(null)} aria-label="Dismiss">×</button>
+          </div>
         )}
       </div>
     </div>

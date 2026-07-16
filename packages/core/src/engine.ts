@@ -98,6 +98,30 @@ export class Engine extends EventEmitter {
     return thread;
   }
 
+  renameThread(threadId: string, title: string): Thread {
+    const thread = this.threads.get(threadId);
+    if (!thread) throw new Error(`Unknown thread ${threadId}`);
+    const trimmed = title.trim();
+    if (!trimmed) throw new Error("Thread title cannot be empty");
+    thread.title = trimmed.slice(0, 120);
+    thread.updatedAt = new Date().toISOString();
+    this.persist();
+    return thread;
+  }
+
+  deleteThread(threadId: string): void {
+    const thread = this.threads.get(threadId);
+    if (!thread) return;
+    if (thread.status === "running" || this.turns.has(threadId)) {
+      throw new Error("Stop the running thread before deleting it");
+    }
+    this.threads.delete(threadId);
+    this.seq.delete(threadId);
+    this.queues.delete(threadId);
+    this.store.deleteEvents(threadId);
+    this.persist();
+  }
+
   /**
    * Send a message. Messages queue like they do in the CLIs: if a turn is
    * running, the message waits and runs next.

@@ -14,7 +14,10 @@ export interface StereoApi {
   setSettings(settings: Settings): Promise<void>;
   detectAgents(): Promise<{ claude: AgentStatusInfo; codex: AgentStatusInfo }>;
   pickDir(): Promise<string | null>;
+  openDir(directory: string): Promise<void>;
   createThread(input: { cwd: string; agent: AgentSelection }): Promise<Thread>;
+  renameThread(threadId: string, title: string): Promise<Thread>;
+  deleteThread(threadId: string): Promise<void>;
   listThreads(): Promise<Thread[]>;
   threadEvents(threadId: string): Promise<EventEnvelope[]>;
   sendMessage(threadId: string, text: string): Promise<void>;
@@ -141,10 +144,27 @@ function createMock(): StereoApi {
       },
     }),
     pickDir: async () => "/Users/you/acme-app",
+    openDir: async () => undefined,
     createThread: async ({ cwd, agent }) => {
       const t = makeThread(cwd, agent);
       pushThreads();
       return t;
+    },
+    renameThread: async (threadId, title) => {
+      const thread = threads.get(threadId);
+      if (!thread) throw new Error(`Unknown thread ${threadId}`);
+      thread.title = title.trim().slice(0, 120);
+      thread.updatedAt = new Date().toISOString();
+      pushThreads();
+      return thread;
+    },
+    deleteThread: async (threadId) => {
+      const thread = threads.get(threadId);
+      if (thread?.status === "running") throw new Error("Stop the running thread before deleting it");
+      threads.delete(threadId);
+      events.delete(threadId);
+      seq.delete(threadId);
+      pushThreads();
     },
     listThreads: async () => list(),
     threadEvents: async (threadId) => events.get(threadId) ?? [],

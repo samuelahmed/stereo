@@ -22,20 +22,22 @@ export function AgentPicker({ value, onChange, agents }: Props) {
           <button
             key={agent}
             className={`agent-tab ${agent} ${value.agent === agent ? "active" : ""}`}
+            disabled={agents ? !agents[agent].installed : false}
+            title={agents && !agents[agent].installed ? `${AGENT_NAME[agent]} is not installed` : undefined}
             onClick={() => onChange({ agent, model: null, effort: null })}
           >
             ● {AGENT_NAME[agent]}
           </button>
         ))}
       </div>
-      <select value={value.model ?? ""} onChange={(e) => onChange({ ...value, model: e.target.value || null })}>
+      <select aria-label="Model" value={value.model ?? ""} onChange={(e) => onChange({ ...value, model: e.target.value || null })}>
         {models.map((m) => (
           <option key={m.value ?? "default"} value={m.value ?? ""}>
             {m.label}
           </option>
         ))}
       </select>
-      <select value={value.effort ?? ""} onChange={(e) => onChange({ ...value, effort: e.target.value || null })}>
+      <select aria-label="Reasoning effort" value={value.effort ?? ""} onChange={(e) => onChange({ ...value, effort: e.target.value || null })}>
         {efforts.map((e) => (
           <option key={e ?? "default"} value={e ?? ""}>
             {e ?? "default effort"}

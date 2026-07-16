@@ -40,6 +40,26 @@ body {
   user-select: none;
 }
 
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid rgba(124, 192, 245, 0.55);
+  outline-offset: 2px;
+}
+
+* {
+  scrollbar-color: var(--bg-3) transparent;
+  scrollbar-width: thin;
+}
+
 .app {
   display: flex;
   height: 100%;
@@ -47,22 +67,41 @@ body {
 
 /* ---------- sidebar ---------- */
 .sidebar {
-  width: 248px;
   flex-shrink: 0;
   background: var(--bg-1);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  padding: 12px 10px 10px;
+  padding: 12px 9px 10px;
   gap: 8px;
+  position: relative;
+  min-width: 196px;
+  max-width: 420px;
+}
+
+.brand-row {
+  display: flex;
+  align-items: flex-end;
+  padding-right: 4px;
 }
 
 .brand {
   -webkit-app-region: drag;
-  padding: 30px 6px 4px;
+  flex: 1;
+  padding: 30px 7px 4px;
   font-size: 14.5px;
   font-weight: 650;
   letter-spacing: 0.04em;
+}
+
+.shortcut-hint,
+.new-thread-shortcut {
+  color: var(--text-3);
+  font: 10px/1 var(--mono);
+}
+
+.shortcut-hint {
+  padding-bottom: 7px;
 }
 
 .brand-glyph {
@@ -75,13 +114,20 @@ body {
 
 button.new-thread {
   width: 100%;
-  padding: 7px 10px;
+  padding: 8px 10px;
   border-radius: var(--radius);
   border: 1px solid var(--border-strong);
   background: transparent;
   color: var(--text-1);
   font-size: 12.5px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.new-thread-shortcut {
+  margin-left: auto;
 }
 
 button.new-thread:hover {
@@ -94,7 +140,59 @@ button.new-thread:hover {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin-top: 4px;
+  margin-top: 1px;
+}
+
+.thread-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.thread-search {
+  width: 100%;
+  height: 30px;
+  padding: 5px 27px 5px 28px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  outline: none;
+  background: transparent;
+  color: var(--text-1);
+  font-size: 12px;
+}
+
+.thread-search:hover,
+.thread-search:focus {
+  background: var(--bg-2);
+  border-color: var(--border);
+}
+
+.thread-search::placeholder {
+  color: var(--text-3);
+}
+
+.search-icon {
+  position: absolute;
+  left: 9px;
+  color: var(--text-3);
+  z-index: 1;
+}
+
+.search-clear {
+  position: absolute;
+  right: 5px;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.search-clear:hover {
+  color: var(--text-1);
+  background: var(--bg-3);
 }
 
 .thread-list-empty {
@@ -105,10 +203,11 @@ button.new-thread:hover {
 }
 
 .thread-item {
-  padding: 8px 9px;
+  position: relative;
   border-radius: var(--radius);
-  cursor: pointer;
   border: 1px solid transparent;
+  display: flex;
+  min-width: 0;
 }
 
 .thread-item:hover {
@@ -120,14 +219,31 @@ button.new-thread:hover {
   border-color: var(--border);
 }
 
-.thread-item .title {
+.thread-item-main {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 29px 8px 9px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.thread-title {
+  display: flex;
+  align-items: baseline;
+  gap: 0;
   font-size: 12.5px;
   color: var(--text-1);
   line-height: 1.35;
+}
+
+.thread-title > :last-child {
   overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .thread-item .meta {
@@ -137,6 +253,34 @@ button.new-thread:hover {
   display: flex;
   gap: 6px;
   align-items: baseline;
+}
+
+.thread-more {
+  position: absolute;
+  right: 4px;
+  top: 5px;
+  width: 27px;
+  height: 25px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 9px;
+  letter-spacing: -1px;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.thread-item:hover .thread-more,
+.thread-item.selected .thread-more,
+.thread-more:focus-visible {
+  opacity: 1;
+}
+
+.thread-more:hover {
+  background: var(--bg-3);
+  color: var(--text-1);
 }
 
 .thread-item .meta .dim {
@@ -193,6 +337,47 @@ button.new-thread:hover {
   color: var(--text-2);
 }
 
+.sidebar-loading {
+  padding: 2px 0;
+  color: var(--text-3);
+}
+
+.sidebar-resizer {
+  position: absolute;
+  z-index: 20;
+  top: 0;
+  right: -4px;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+}
+
+.sidebar-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+.sidebar-resizer:hover::after,
+.sidebar-resizer:focus-visible::after,
+.resizing-sidebar .sidebar-resizer::after {
+  background: var(--codex);
+}
+
+.resizing-sidebar {
+  cursor: col-resize;
+}
+
+.resizing-sidebar * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
 .agent-badge {
   display: flex;
   align-items: center;
@@ -228,6 +413,7 @@ button.new-thread:hover {
   display: flex;
   flex-direction: column;
   background: var(--bg-0);
+  container-type: inline-size;
 }
 
 .mock-banner {
@@ -267,6 +453,16 @@ button.new-thread:hover {
   padding: 2px 9px;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+button.chip {
+  cursor: pointer;
+}
+
+button.chip:hover {
+  color: var(--text-1);
+  border-color: var(--border-strong);
+  background: var(--bg-2);
 }
 
 .agent-chip.claude {
@@ -324,10 +520,119 @@ button.new-thread:hover {
   gap: 10px;
 }
 
+.menu-dismiss {
+  position: fixed;
+  z-index: 29;
+  inset: 0;
+  -webkit-app-region: no-drag;
+}
+
 .action-menu-title {
   font-size: 12px;
   color: var(--text-2);
   line-height: 1.4;
+}
+
+.context-menu {
+  position: fixed;
+  z-index: 100;
+  width: 188px;
+  padding: 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  background: rgba(38, 38, 46, 0.98);
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(16px);
+}
+
+.context-menu button {
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-1);
+  text-align: left;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.context-menu button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.context-menu button.danger {
+  color: var(--danger);
+}
+
+.context-menu button:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+.context-separator {
+  height: 1px;
+  margin: 4px 5px;
+  background: var(--border);
+}
+
+.modal-backdrop {
+  position: fixed;
+  z-index: 200;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(4, 4, 7, 0.62);
+  backdrop-filter: blur(4px);
+}
+
+.modal {
+  width: min(100%, 400px);
+  padding: 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: 13px;
+  background: var(--bg-2);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+}
+
+.modal-title {
+  margin-bottom: 9px;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.modal-copy {
+  color: var(--text-2);
+  line-height: 1.55;
+}
+
+.modal-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  outline: none;
+  background: var(--bg-1);
+  color: var(--text-1);
+}
+
+.modal-input:focus {
+  border-color: var(--codex);
+}
+
+.modal-error {
+  margin-top: 9px;
+  color: var(--danger);
+  font-size: 11.5px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  margin-top: 16px;
 }
 
 /* ---------- agent picker ---------- */
@@ -352,6 +657,11 @@ button.new-thread:hover {
   font-size: 11.5px;
   padding: 4px 11px;
   cursor: pointer;
+}
+
+.agent-tab:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 .agent-tab.claude.active {
@@ -924,6 +1234,80 @@ button.new-thread:hover {
   color: var(--text-2);
 }
 
+.btn.danger {
+  border-color: rgba(239, 143, 143, 0.35);
+  background: rgba(239, 143, 143, 0.12);
+  color: var(--danger);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.app-loading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: var(--text-3);
+}
+
+.loading-spinner,
+.button-spinner {
+  display: inline-block;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
+.loading-spinner {
+  width: 13px;
+  height: 13px;
+}
+
+.button-spinner {
+  width: 11px;
+  height: 11px;
+}
+
+.toast {
+  position: fixed;
+  z-index: 300;
+  right: 18px;
+  bottom: 18px;
+  width: min(390px, calc(100vw - 36px));
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 11px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  background: var(--bg-3);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+  color: var(--text-1);
+  line-height: 1.45;
+}
+
+.error-toast {
+  border-color: rgba(239, 143, 143, 0.38);
+}
+
+.toast span {
+  flex: 1;
+  user-select: text;
+}
+
+.toast button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
 /* ---------- composer ---------- */
 .composer {
   border-top: 1px solid var(--border);
@@ -931,10 +1315,12 @@ button.new-thread:hover {
   display: flex;
   flex-direction: column;
   gap: 7px;
+  align-items: center;
 }
 
 .composer-input {
   position: relative;
+  width: min(100%, 860px);
 }
 
 .composer textarea {
@@ -948,8 +1334,14 @@ button.new-thread:hover {
   font-size: 13px;
   padding: 11px 48px 11px 13px;
   min-height: 62px;
+  max-height: 220px;
+  overflow-y: auto;
   outline: none;
   line-height: 1.5;
+}
+
+.composer-input.submitting textarea {
+  opacity: 0.7;
 }
 
 .composer textarea:focus {
@@ -989,10 +1381,63 @@ button.new-thread:hover {
 .composer-row {
   display: flex;
   align-items: center;
+  width: min(100%, 860px);
+}
+
+.queue-note {
+  color: var(--warning);
+  font-size: 11px;
 }
 
 .composer-hint {
   margin-left: auto;
   font-size: 11px;
   color: var(--text-3);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@container (max-width: 680px) {
+  .thread-header > .chip:not(.agent-chip),
+  .thread-header > .usage {
+    display: none;
+  }
+
+  .thread-header .title {
+    flex: 1;
+    max-width: none;
+  }
+
+  .thread-header .spacer {
+    display: none;
+  }
+
+  .new-thread-config {
+    min-width: 0;
+    width: 100%;
+  }
+}
+
+@container (max-width: 500px) {
+  .thread-header {
+    padding-left: 12px;
+    padding-right: 10px;
+  }
+
+  .thread-header > .agent-chip {
+    display: none;
+  }
+
+  .header-actions {
+    gap: 2px;
+  }
+
+  .header-actions .btn {
+    padding-left: 7px;
+    padding-right: 7px;
+  }
 }
