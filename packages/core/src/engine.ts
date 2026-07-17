@@ -389,6 +389,16 @@ export class Engine extends EventEmitter {
   nativeResumeCommand(threadId: string): string | null {
     const thread = this.threads.get(threadId);
     if (!thread?.sessionId) return null;
+    if (process.platform === "win32") {
+      const quote = (value: string) => `'${value.replaceAll("'", "''")}'`;
+      const cwd = quote(thread.cwd);
+      const sid = quote(thread.sessionId);
+      const model = quote(thread.agent.model);
+      const effort = quote(thread.agent.effort);
+      return thread.agent.agent === "claude"
+        ? `Set-Location -LiteralPath ${cwd}; claude --resume ${sid} --model ${model} --effort ${effort}`
+        : `Set-Location -LiteralPath ${cwd}; codex resume ${sid} --model ${model} --config model_reasoning_effort=${effort}`;
+    }
     const cwd = `'${thread.cwd.replaceAll("'", "'\\''")}'`;
     const sid = `'${thread.sessionId.replaceAll("'", "'\\''")}'`;
     const model = `'${thread.agent.model.replaceAll("'", "'\\''")}'`;

@@ -1,16 +1,13 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { AGENT_MODELS } from "../models.js";
 import type { AgentModelInfo, AgentStatusInfo } from "../types.js";
-
-const run = promisify(execFile);
+import { commandOutput } from "./command.js";
 
 async function version(bin: string): Promise<string | null> {
   try {
-    const { stdout } = await run(bin, ["--version"], { timeout: 10_000 });
+    const stdout = await commandOutput(bin, ["--version"], { timeout: 10_000 });
     return stdout.trim().split("\n")[0] ?? null;
   } catch {
     return null;
@@ -37,7 +34,7 @@ type CodexCatalogModel = {
 async function codexModels(): Promise<AgentModelInfo[]> {
   const fallback = AGENT_MODELS.codex.map((model) => ({ ...model, efforts: [...model.efforts] }));
   try {
-    const { stdout } = await run("codex", ["debug", "models"], { timeout: 10_000, maxBuffer: 2 * 1024 * 1024 });
+    const stdout = await commandOutput("codex", ["debug", "models"], { timeout: 10_000, maxBuffer: 2 * 1024 * 1024 });
     const parsed = JSON.parse(stdout) as CodexCatalogModel[] | { models?: CodexCatalogModel[] };
     const catalog = Array.isArray(parsed) ? parsed : parsed.models;
     if (!Array.isArray(catalog)) return fallback;

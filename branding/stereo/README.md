@@ -59,7 +59,7 @@ Generated assets should not be edited by hand. Change the canonical geometry or 
 On macOS:
 
 ```sh
-open /Users/samuelduval/stereo/branding/stereo/preview.html
+open branding/stereo/preview.html
 ```
 
 No server or build step is required.

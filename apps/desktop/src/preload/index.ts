@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { AgentSelection, Attachment, EventEnvelope, Project, QueuedMessage, ReadySound, Settings, Thread } from "@stereo/core";
 
 const api = {
+  platform: process.platform === "darwin" ? "mac" as const : process.platform === "win32" ? "windows" as const : "linux" as const,
   getSettings: () => ipcRenderer.invoke("settings:get"),
   setSettings: (settings: Settings): Promise<Settings> => ipcRenderer.invoke("settings:set", settings),
   testNotifications: (): Promise<void> => ipcRenderer.invoke("notifications:test"),

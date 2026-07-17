@@ -4,6 +4,7 @@ import { AGENT_NAME } from "../labels";
 import { StereoBrandCharacter } from "./StereoBrandCharacter";
 
 interface Props {
+  primaryModifier: string;
   threads: Thread[];
   projects: Project[];
   selectedId: string | null;
@@ -204,6 +205,7 @@ function saveCollapsedProjects(projects: Set<string>): void {
 }
 
 export function Sidebar({
+  primaryModifier,
   threads,
   projects,
   selectedId,
@@ -375,7 +377,7 @@ export function Sidebar({
         </div>
       </div>
       <button className="new-thread" onClick={() => onSelect(null)}>
-        <span>＋</span> New thread <span className="new-thread-shortcut">⌘N</span>
+        <span>＋</span> New thread <span className="new-thread-shortcut">{primaryModifier}N</span>
       </button>
       <div className="thread-search-wrap">
         <input
@@ -447,7 +449,7 @@ export function Sidebar({
       <div className="sidebar-footer">
         <button className="settings-button" onClick={onSettings}>
           <span>Settings</span>
-          <kbd>⌘,</kbd>
+          <kbd>{primaryModifier},</kbd>
         </button>
       </div>
 

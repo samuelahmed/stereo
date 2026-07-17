@@ -37,6 +37,26 @@ function readySoundLabel(sound: ReadySound): string {
   return "Off";
 }
 
+const COMPOSER_SELECTOR = 'textarea[data-stereo-composer="true"]';
+const COMPOSER_FOCUS_BLOCKERS = '[aria-modal="true"], [role="dialog"], [role="menu"], .action-menu';
+
+function isTextEntry(element: Element | null): boolean {
+  return element instanceof HTMLElement && element.matches('input, textarea, select, [contenteditable="true"]');
+}
+
+/** Focus the visible composer without pulling the transcript or app window around. */
+function focusComposer(preserveTextEntry = false): void {
+  if (!document.hasFocus() || document.querySelector(COMPOSER_FOCUS_BLOCKERS)) return;
+  const composer = document.querySelector<HTMLTextAreaElement>(COMPOSER_SELECTOR);
+  if (!composer || composer.disabled) return;
+  if (preserveTextEntry && document.activeElement !== composer && isTextEntry(document.activeElement)) return;
+  composer.focus({ preventScroll: true });
+}
+
+function focusComposerAfterRender(preserveTextEntry = false): void {
+  window.requestAnimationFrame(() => focusComposer(preserveTextEntry));
+}
+
 export function App() {
   const [threads, setThreads] = useState<ThreadT[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -163,6 +183,22 @@ export function App() {
     return () => window.removeEventListener("focus", clearVisible);
   }, []);
 
+  // Returning to Stereo usually means the user is ready to type. Preserve a
+  // deliberate text field (such as thread search), and never reach through an
+  // open dialog or menu to the composer underneath it.
+  useEffect(() => {
+    const onFocus = () => focusComposerAfterRender(true);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") focusComposerAfterRender(true);
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, []);
+
   useEffect(() => {
     document.title = unreadIds.size ? `(${unreadIds.size}) Stereo` : "Stereo";
   }, [unreadIds]);
@@ -230,6 +266,9 @@ export function App() {
       next.delete(id);
       return next;
     });
+    // Also handles selecting the already-active thread or pressing New Thread
+    // while the blank composer is already on screen.
+    focusComposerAfterRender();
   }, []);
 
   useEffect(() => {
@@ -373,15 +412,20 @@ export function App() {
   const openMenu = useCallback(
     (which: "fork" | "review") => {
       if (!selected) return;
+      if (menu === which) {
+        setMenu(null);
+        focusComposerAfterRender();
+        return;
+      }
       setThreadAgentDraft(null);
       setMenuAgent(
         which === "review"
           ? defaultAgentSelection(otherAgent(selected.agent.agent))
           : { ...selected.agent },
       );
-      setMenu((prev) => (prev === which ? null : which));
+      setMenu(which);
     },
-    [selected],
+    [menu, selected],
   );
 
   const confirmMenu = useCallback(async () => {
@@ -402,6 +446,7 @@ export function App() {
     try {
       await stereo.setThreadAgent(selected.id, threadAgentDraft);
       setThreadAgentDraft(null);
+      focusComposerAfterRender();
     } catch (error) {
       setAppError(error instanceof Error ? error.message : String(error));
     }
@@ -449,9 +494,10 @@ export function App() {
   }
 
   const stats = selected ? statsByThread[selected.id] : null;
+  const primaryModifier = stereo.platform === "mac" ? "⌘" : "Ctrl+";
   const paletteCommands: PaletteCommand[] = [
-    { id: "new", label: "New thread", detail: "Start a conversation in a project", group: "Stereo", shortcut: "⌘N", run: () => selectThread(null) },
-    { id: "settings", label: "Settings", detail: "App defaults and local harnesses", group: "Stereo", shortcut: "⌘,", run: () => setControlTab("app") },
+    { id: "new", label: "New thread", detail: "Start a conversation in a project", group: "Stereo", shortcut: `${primaryModifier}N`, run: () => selectThread(null) },
+    { id: "settings", label: "Settings", detail: "App defaults and local harnesses", group: "Stereo", shortcut: `${primaryModifier},`, run: () => setControlTab("app") },
     { id: "project", label: "Project settings", detail: "Defaults and configuration files", group: "Project", disabled: !selected, run: () => setControlTab("project") },
     { id: "diagnostics", label: "Session diagnostics", detail: "Recovery state and native CLI escape hatch", group: "Harness", disabled: !selected, run: () => setControlTab("session") },
     { id: "fork", label: "Fork conversation", detail: "Continue with another harness", group: "Conversation", disabled: !selected || selected.status === "running", run: () => openMenu("fork") },
@@ -463,6 +509,7 @@ export function App() {
   return (
     <div className="app">
       <Sidebar
+        primaryModifier={primaryModifier}
         threads={threads}
         projects={projects}
         selectedId={selectedId}
@@ -512,7 +559,12 @@ export function App() {
                   aria-expanded={Boolean(threadAgentDraft)}
                   onClick={() => {
                     setMenu(null);
-                    setThreadAgentDraft((current) => current ? null : { ...selected.agent });
+                    if (threadAgentDraft) {
+                      setThreadAgentDraft(null);
+                      focusComposerAfterRender();
+                    } else {
+                      setThreadAgentDraft({ ...selected.agent });
+                    }
                   }}
                 >
                   Info
@@ -525,7 +577,7 @@ export function App() {
                 </button>
                 {threadAgentDraft && (
                   <>
-                    <div className="menu-dismiss" onClick={() => setThreadAgentDraft(null)} />
+                    <div className="menu-dismiss" onClick={() => { setThreadAgentDraft(null); focusComposerAfterRender(); }} />
                     <div className="action-menu thread-info-menu" role="dialog" aria-label="Thread info">
                       <div className="thread-info-heading">
                         <strong>Thread info</strong>
@@ -584,7 +636,7 @@ export function App() {
                       )}
                       {selected.archivedAt && <div className="model-menu-note">Restore this thread before changing its controls.</div>}
                       <div className="model-menu-actions">
-                        <button className="btn ghost" onClick={() => setThreadAgentDraft(null)}>Close</button>
+                        <button className="btn ghost" onClick={() => { setThreadAgentDraft(null); focusComposerAfterRender(); }}>Close</button>
                         <button
                           className="btn primary"
                           disabled={selected.status === "running" || Boolean(selected.archivedAt) || (queueByThread[selected.id]?.length ?? 0) > 0}
@@ -599,7 +651,7 @@ export function App() {
                 )}
                 {menu && (
                   <>
-                    <div className="menu-dismiss" onClick={() => setMenu(null)} />
+                    <div className="menu-dismiss" onClick={() => { setMenu(null); focusComposerAfterRender(); }} />
                     <div className="action-menu">
                       <div className="action-menu-title">
                         {menu === "fork"
@@ -682,11 +734,11 @@ export function App() {
         {appError && (
           <div className="toast error-toast" role="alert">
             <span>{appError}</span>
-            <button onClick={() => setAppError(null)} aria-label="Dismiss">×</button>
+            <button onClick={() => { setAppError(null); focusComposerAfterRender(); }} aria-label="Dismiss">×</button>
           </div>
         )}
-        {controlTab && settings && <ControlCenter thread={selected} agents={agents} settings={settings} initialTab={controlTab} onSettingsChange={settingsChange} onClose={() => { setControlTab(null); void stereo.listProjects().then(setProjects); }} onError={setAppError} />}
-        {paletteOpen && <CommandPalette commands={paletteCommands} onClose={() => setPaletteOpen(false)} />}
+        {controlTab && settings && <ControlCenter thread={selected} agents={agents} settings={settings} initialTab={controlTab} onSettingsChange={settingsChange} onClose={() => { setControlTab(null); void stereo.listProjects().then(setProjects); focusComposerAfterRender(); }} onError={setAppError} />}
+        {paletteOpen && <CommandPalette commands={paletteCommands} onClose={() => { setPaletteOpen(false); focusComposerAfterRender(); }} />}
       </div>
     </div>
   );

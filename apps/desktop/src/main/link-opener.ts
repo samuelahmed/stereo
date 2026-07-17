@@ -17,7 +17,13 @@ interface EditorDefinition {
   label: string;
   command: string;
   macCommands: string[];
+  windowsCommands: string[];
+  linuxCommands: string[];
   args(location: string): string[];
+}
+
+function under(root: string | undefined, ...parts: string[]): string {
+  return root ? path.join(root, ...parts) : "";
 }
 
 const EDITORS: Record<CodeEditor, EditorDefinition> = {
@@ -25,12 +31,28 @@ const EDITORS: Record<CodeEditor, EditorDefinition> = {
     label: "Visual Studio Code",
     command: "code",
     macCommands: ["/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"],
+    windowsCommands: [
+      under(process.env.LOCALAPPDATA, "Programs", "Microsoft VS Code", "Code.exe"),
+      under(process.env.ProgramFiles, "Microsoft VS Code", "Code.exe"),
+      under(process.env["ProgramFiles(x86)"], "Microsoft VS Code", "Code.exe"),
+      under(process.env.LOCALAPPDATA, "Programs", "Microsoft VS Code", "bin", "code.cmd"),
+      under(process.env.ProgramFiles, "Microsoft VS Code", "bin", "code.cmd"),
+      under(process.env["ProgramFiles(x86)"], "Microsoft VS Code", "bin", "code.cmd"),
+    ],
+    linuxCommands: ["/usr/local/bin/code", "/usr/bin/code", "/snap/bin/code"],
     args: (location) => ["--goto", location],
   },
   cursor: {
     label: "Cursor",
     command: "cursor",
     macCommands: ["/Applications/Cursor.app/Contents/Resources/app/bin/cursor"],
+    windowsCommands: [
+      under(process.env.LOCALAPPDATA, "Programs", "cursor", "Cursor.exe"),
+      under(process.env.LOCALAPPDATA, "Programs", "Cursor", "Cursor.exe"),
+      under(process.env.LOCALAPPDATA, "Programs", "cursor", "resources", "app", "bin", "cursor.cmd"),
+      under(process.env.LOCALAPPDATA, "Programs", "Cursor", "resources", "app", "bin", "cursor.cmd"),
+    ],
+    linuxCommands: ["/usr/local/bin/cursor", "/usr/bin/cursor", "/snap/bin/cursor"],
     args: (location) => ["--goto", location],
   },
   zed: {
@@ -40,6 +62,8 @@ const EDITORS: Record<CodeEditor, EditorDefinition> = {
       "/Applications/Zed.app/Contents/MacOS/cli",
       "/Applications/Zed.app/Contents/MacOS/zed",
     ],
+    windowsCommands: [under(process.env.LOCALAPPDATA, "Programs", "Zed", "zed.exe")],
+    linuxCommands: ["/usr/local/bin/zed", "/usr/bin/zed"],
     args: (location) => [location],
   },
 };
@@ -66,10 +90,23 @@ function executableOnPath(command: string): string | null {
 
 function editorExecutable(editor: CodeEditor): string | null {
   const definition = EDITORS[editor];
+  const candidates = process.platform === "darwin"
+    ? definition.macCommands
+    : process.platform === "win32"
+      ? definition.windowsCommands
+      : definition.linuxCommands;
+  const installed = candidates.find((candidate) => candidate && fs.existsSync(candidate));
+  if (process.platform === "win32" && installed) return installed;
   const fromPath = executableOnPath(definition.command);
-  if (fromPath) return fromPath;
-  if (process.platform !== "darwin") return null;
-  return definition.macCommands.find((candidate) => fs.existsSync(candidate)) ?? null;
+  if (process.platform === "win32" && fromPath && /\.(?:cmd|bat)$/i.test(fromPath)) {
+    const nativeCandidate = editor === "vscode"
+      ? path.resolve(path.dirname(fromPath), "..", "Code.exe")
+      : editor === "cursor"
+        ? path.resolve(path.dirname(fromPath), "..", "..", "..", "Cursor.exe")
+        : null;
+    return nativeCandidate && fs.existsSync(nativeCandidate) ? nativeCandidate : null;
+  }
+  return fromPath ?? installed ?? null;
 }
 
 function hintedEditor(): CodeEditor | null {

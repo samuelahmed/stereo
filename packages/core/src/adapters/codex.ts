@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -6,6 +5,7 @@ import { createInterface } from "node:readline";
 import type { AgentSelection, PermissionMode, TokenUsage } from "../types.js";
 import type { AgentAdapter, TurnCallbacks, TurnHandle, TurnOptions, TurnResult } from "./types.js";
 import { childEnv } from "./env.js";
+import { spawnCommand, terminateCommand } from "./command.js";
 
 type Rec = Record<string, unknown>;
 const rec = (v: unknown): Rec => (typeof v === "object" && v !== null ? (v as Rec) : {});
@@ -110,17 +110,22 @@ export function codexAdapter(spec: AgentSelection, permission: PermissionMode): 
   return {
     agent: "codex",
     startTurn(prompt: string, opts: TurnOptions, cb: TurnCallbacks): TurnHandle {
-      const base = ["exec", "--json", "--color", "never", "-C", opts.cwd, "--skip-git-repo-check", ...specArgs(spec)];
+      const base = ["exec", "--json", "--color", "never", "--skip-git-repo-check", ...specArgs(spec)];
       const sandbox = ["-s", permission === "read-only" ? "read-only" : "workspace-write"];
       const args = opts.resumeSessionId
-        ? [...base, ...sandbox, "resume", opts.resumeSessionId, prompt]
-        : [...base, ...sandbox, prompt];
+        ? [...base, ...sandbox, "resume", opts.resumeSessionId, "-"]
+        : [...base, ...sandbox, "-"];
 
-      const child = spawn("codex", args, {
+      const child = spawnCommand("codex", args, {
         cwd: opts.cwd,
         env: childEnv(),
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: ["pipe", "pipe", "pipe"],
       });
+      // User prompts stay on stdin, not the Windows cmd.exe command line. A
+      // launch failure is reported by the child itself; do not let the broken
+      // stdin pipe become a separate unhandled error.
+      child.stdin?.on("error", () => undefined);
+      child.stdin?.end(prompt);
 
       let interrupted = false;
       let sessionLost = false;
@@ -169,7 +174,7 @@ export function codexAdapter(spec: AgentSelection, permission: PermissionMode): 
               // resume — the old rollout is gone. Stop before tokens are spent;
               // the engine rebuilds context from the transcript and retries.
               sessionLost = true;
-              child.kill("SIGTERM");
+              terminateCommand(child);
               return;
             }
             threadId = id;
@@ -214,6 +219,7 @@ export function codexAdapter(spec: AgentSelection, permission: PermissionMode): 
           scanForUsage(event);
         };
 
+        if (!child.stdout || !child.stderr) throw new Error("codex process streams are unavailable");
         createInterface({ input: child.stdout }).on("line", (line) => {
           const trimmed = line.trim();
           if (!trimmed.startsWith("{")) return;
@@ -255,7 +261,7 @@ export function codexAdapter(spec: AgentSelection, permission: PermissionMode): 
       return {
         interrupt: () => {
           interrupted = true;
-          child.kill("SIGTERM");
+          terminateCommand(child);
         },
         done,
       };

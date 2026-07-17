@@ -41,6 +41,15 @@ export function Composer({ draftKey, placeholder, running, disabled = false, onS
   const dragDepth = useRef(0);
 
   useLayoutEffect(() => {
+    if (disabled) return;
+    const frame = window.requestAnimationFrame(() => {
+      if (document.querySelector('[aria-modal="true"], [role="dialog"], [role="menu"], .action-menu')) return;
+      textarea.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [disabled, draftKey]);
+
+  useLayoutEffect(() => {
     const element = textarea.current;
     if (!element) return;
     element.style.height = "0";
@@ -159,6 +168,7 @@ export function Composer({ draftKey, placeholder, running, disabled = false, onS
         )}
         <textarea
           ref={textarea}
+          data-stereo-composer="true"
           value={text}
           placeholder={placeholder}
           disabled={submitting || disabled}

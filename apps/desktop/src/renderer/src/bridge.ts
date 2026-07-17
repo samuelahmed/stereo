@@ -15,6 +15,7 @@ import type {
 import { AGENT_MODELS, defaultAgentSelection } from "@stereo/core/models";
 
 export interface StereoApi {
+  platform: "mac" | "windows" | "linux";
   getSettings(): Promise<Settings>;
   setSettings(settings: Settings): Promise<Settings>;
   testNotifications(): Promise<void>;
@@ -161,6 +162,7 @@ function createMock(): StereoApi {
   };
 
   return {
+    platform: /Mac|iPhone|iPad/.test(navigator.platform) ? "mac" : /Win/.test(navigator.platform) ? "windows" : "linux",
     getSettings: async () => settings,
     setSettings: async (next) => {
       settings = next;

@@ -52,5 +52,9 @@ pnpm typecheck
 pnpm build
 ```
 
-Opening `http://localhost:5173` in a plain browser shows a design-mode mock (no real
+Type checking and production builds run in CI on macOS, Windows, and Linux.
+The copied native-session command uses POSIX shell syntax on macOS/Linux and
+PowerShell syntax on Windows.
+
+Opening `http://localhost:5175` in a plain browser shows a design-mode mock (no real
 agents, no tokens spent). The real engine only runs inside the Electron shell.
