@@ -11,6 +11,7 @@ import type {
   Project,
   ProjectInspection,
   QueuedMessage,
+  ReadySound,
   Settings,
   Thread,
   ThreadEvent,
@@ -29,6 +30,7 @@ import { ThreadStore } from "./store.js";
 
 const MAX_REVIEW_DIFF_CHARS = 200_000;
 const MAX_ARTIFACT_BYTES = 15 * 1024 * 1024;
+const READY_SOUNDS = new Set<ReadySound>(["off", "standard", "prominent"]);
 const ARTIFACT_MIME: Record<string, string> = {
   ".png": "image/png",
   ".jpg": "image/jpeg",
@@ -268,6 +270,16 @@ export class Engine extends EventEmitter {
     if (!thread) throw new Error(`Unknown thread ${threadId}`);
     if (permission === "ask" && thread.agent.agent === "codex") throw new Error("Codex exec does not expose interactive approvals");
     thread.permission = permission;
+    thread.updatedAt = new Date().toISOString();
+    this.persist();
+    return thread;
+  }
+
+  setThreadReadySound(threadId: string, readySound: ReadySound | null): Thread {
+    const thread = this.threads.get(threadId);
+    if (!thread) throw new Error(`Unknown thread ${threadId}`);
+    if (readySound !== null && !READY_SOUNDS.has(readySound)) throw new Error("Unknown ready sound");
+    thread.readySound = readySound;
     thread.updatedAt = new Date().toISOString();
     this.persist();
     return thread;

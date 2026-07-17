@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
-import type { AgentSelection, Attachment, EventEnvelope, Project, QueuedMessage, Settings, Thread } from "@stereo/core";
+import type { AgentSelection, Attachment, EventEnvelope, Project, QueuedMessage, ReadySound, Settings, Thread } from "@stereo/core";
 
 const api = {
   getSettings: () => ipcRenderer.invoke("settings:get"),
@@ -24,6 +24,7 @@ const api = {
   previewFile: (filePath: string) => ipcRenderer.invoke("file:preview", filePath),
   createThread: (input: { cwd: string; projectId?: string; agent: AgentSelection; permission?: Thread["permission"] }) => ipcRenderer.invoke("thread:create", input),
   setThreadPermission: (threadId: string, permission: Thread["permission"]) => ipcRenderer.invoke("thread:permission", threadId, permission),
+  setThreadReadySound: (threadId: string, readySound: ReadySound | null) => ipcRenderer.invoke("thread:ready-sound", threadId, readySound),
   setThreadAgent: (threadId: string, agent: AgentSelection) => ipcRenderer.invoke("thread:agent", threadId, agent),
   renameThread: (threadId: string, title: string) => ipcRenderer.invoke("thread:rename", threadId, title),
   setThreadArchived: (threadId: string, archived: boolean) => ipcRenderer.invoke("thread:archive", threadId, archived),

@@ -11,6 +11,7 @@ import {
   type EventEnvelope,
   type EditorPreference,
   type QueuedMessage,
+  type ReadySound,
   type Project,
   type Settings,
   type Thread,
@@ -19,25 +20,40 @@ import {
 } from "@stereo/core";
 import { openMarkdownLink } from "./link-opener.js";
 
+app.setName("Stereo");
+
+function applicationIconPath(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "icon.png")
+    : path.join(app.getAppPath(), "resources", "icon.png");
+}
+
 const DEFAULT_SETTINGS: Settings = {
   defaultAgent: defaultAgentSelection("claude"),
   defaultPermission: "workspace-write",
   editor: "auto",
   notifyOnComplete: false,
-  soundOnComplete: false,
+  readySound: "off",
 };
 
 const EDITOR_PREFERENCES = new Set<EditorPreference>(["auto", "vscode", "cursor", "zed", "system"]);
+const READY_SOUNDS = new Set<ReadySound>(["off", "standard", "prominent"]);
+type SavedSettings = Partial<Settings> & { soundOnComplete?: boolean };
 
-function normalizeSettings(saved: Partial<Settings>): Settings {
+function normalizeSettings(saved: SavedSettings): Settings {
   const merged = { ...DEFAULT_SETTINGS, ...saved };
   const defaultAgent = normalizeAgentSelection(merged.defaultAgent);
+  const readySound = saved.readySound && READY_SOUNDS.has(saved.readySound)
+    ? saved.readySound
+    : saved.soundOnComplete
+      ? "standard"
+      : "off";
   return {
     defaultAgent,
     editor: EDITOR_PREFERENCES.has(merged.editor) ? merged.editor : "auto",
     defaultPermission: defaultAgent.agent === "codex" && merged.defaultPermission === "ask" ? "workspace-write" : merged.defaultPermission,
     notifyOnComplete: Boolean(merged.notifyOnComplete),
-    soundOnComplete: Boolean(merged.soundOnComplete),
+    readySound,
   };
 }
 
@@ -47,7 +63,7 @@ function settingsPath(): string {
 
 function loadSettings(): Settings {
   try {
-    return normalizeSettings(JSON.parse(fs.readFileSync(settingsPath(), "utf8")) as Partial<Settings>);
+    return normalizeSettings(JSON.parse(fs.readFileSync(settingsPath(), "utf8")) as SavedSettings);
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -83,14 +99,22 @@ function revealThread(threadId: string): void {
   }
 }
 
+function playReadySound(readySound: ReadySound): void {
+  if (readySound === "off") return;
+  shell.beep();
+  if (readySound === "prominent") setTimeout(() => shell.beep(), 700);
+}
+
 function showNotice(title: string, body: string, threadId?: string, force = false): void {
   const settings = loadSettings();
   if (!force && win && !win.isDestroyed() && win.isFocused()) return;
-  if (!settings.notifyOnComplete && !settings.soundOnComplete) return;
+  const thread = threadId ? engine.listThreads().find((candidate) => candidate.id === threadId) : null;
+  const readySound = thread?.readySound ?? settings.readySound;
+  if (!settings.notifyOnComplete && readySound === "off") return;
 
   // A local beep is deliberately separate from Notification Center. It works
-  // in unsigned development builds and needs no macOS privacy permission.
-  if (settings.soundOnComplete) shell.beep();
+  // in unsigned development builds and needs no notification permission.
+  playReadySound(readySound);
 
   if (settings.notifyOnComplete && Notification.isSupported()) {
     const notification = new Notification({ title, body, silent: true });
@@ -102,7 +126,10 @@ function showNotice(title: string, body: string, threadId?: string, force = fals
     notification.show();
   }
 
-  if (!force && process.platform === "darwin") app.dock?.bounce("informational");
+  if (!force) {
+    if (win && !win.isDestroyed()) win.flashFrame(true);
+    else if (process.platform === "darwin") app.dock?.bounce("informational");
+  }
 }
 
 function noticeFor(envelope: EventEnvelope): { title: string; body: string } | null {
@@ -145,6 +172,7 @@ function createWindow(): void {
     minWidth: 880,
     minHeight: 560,
     title: "Stereo",
+    icon: applicationIconPath(),
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     backgroundColor: "#131316",
     webPreferences: {
@@ -170,6 +198,7 @@ function createWindow(): void {
   browserWindow.on("closed", () => {
     if (win === browserWindow) win = null;
   });
+  browserWindow.on("focus", () => browserWindow.flashFrame(false));
 
   // The shell=stereo marker lets the renderer distinguish "running inside the
   // real app with a broken bridge" (hard error) from "running in a plain
@@ -182,6 +211,7 @@ function createWindow(): void {
 }
 
 void app.whenReady().then(() => {
+  if (process.platform === "darwin") app.dock?.setIcon(applicationIconPath());
   const settings = loadSettings();
   engine = new Engine(settings, path.join(app.getPath("userData"), "data"));
   engine.on("event", (envelope: EventEnvelope) => {
@@ -203,7 +233,7 @@ void app.whenReady().then(() => {
   });
   ipcMain.handle("notifications:test", () => {
     const settings = loadSettings();
-    if (!settings.notifyOnComplete && !settings.soundOnComplete) throw new Error("Turn on notifications or sound first");
+    if (!settings.notifyOnComplete && settings.readySound === "off") throw new Error("Turn on notifications or sound first");
     showNotice("Stereo is ready", "You'll be notified when work is ready for you.", undefined, true);
   });
 
@@ -259,6 +289,7 @@ void app.whenReady().then(() => {
 
   ipcMain.handle("thread:create", (_e, input: { cwd: string; projectId?: string; agent: AgentSelection; permission?: Thread["permission"] }) => engine.createThread(input));
   ipcMain.handle("thread:permission", (_e, threadId: string, permission: Thread["permission"]) => engine.setThreadPermission(threadId, permission));
+  ipcMain.handle("thread:ready-sound", (_e, threadId: string, readySound: ReadySound | null) => engine.setThreadReadySound(threadId, readySound));
   ipcMain.handle("thread:agent", (_e, threadId: string, agent: AgentSelection) => engine.setThreadAgent(threadId, agent));
   ipcMain.handle("thread:rename", (_e, threadId: string, title: string) => engine.renameThread(threadId, title));
   ipcMain.handle("thread:archive", (_e, threadId: string, archived: boolean) => engine.setThreadArchived(threadId, archived));

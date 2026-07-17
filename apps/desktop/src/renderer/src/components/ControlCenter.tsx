@@ -104,11 +104,15 @@ export function ControlCenter({ thread, agents, settings, initialTab = "app", on
                 </label>
                 <label className="settings-row">
                   <div><strong>Ready sound</strong><span>Play a local sound when Stereo needs you. No system permission required.</span></div>
-                  <input type="checkbox" checked={settings.soundOnComplete} onChange={(event) => onSettingsChange({ ...settings, soundOnComplete: event.target.checked })} />
+                  <select value={settings.readySound} onChange={(event) => onSettingsChange({ ...settings, readySound: event.target.value as Settings["readySound"] })}>
+                    <option value="off">Off</option>
+                    <option value="standard">Standard</option>
+                    <option value="prominent">Prominent (repeat)</option>
+                  </select>
                 </label>
-                {(settings.notifyOnComplete || settings.soundOnComplete) && (
+                {(settings.notifyOnComplete || settings.readySound !== "off") && (
                   <div className="settings-row notification-test">
-                    <div><strong>Try it</strong><span>macOS may ask once before Stereo can show system notifications.</span></div>
+                    <div><strong>Try it</strong><span>Your system may ask once before Stereo can show notifications.</span></div>
                     <button className="btn" onClick={() => void run(async () => {
                       await stereo.testNotifications();
                       setNotificationTested(true);

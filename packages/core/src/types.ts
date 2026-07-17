@@ -17,13 +17,14 @@ export interface AgentModelInfo {
 
 export type PermissionMode = "read-only" | "ask" | "workspace-write";
 export type EditorPreference = "auto" | "vscode" | "cursor" | "zed" | "system";
+export type ReadySound = "off" | "standard" | "prominent";
 
 export interface Settings {
   defaultAgent: AgentSelection;
   defaultPermission: PermissionMode;
   editor: EditorPreference;
   notifyOnComplete: boolean;
-  soundOnComplete: boolean;
+  readySound: ReadySound;
 }
 
 /** A repository-scoped workspace shared by any number of threads. */
@@ -109,6 +110,8 @@ export interface Thread {
   kind: ThreadKind;
   agent: AgentSelection;
   permission: PermissionMode;
+  /** Null or absent follows the app-wide ready-sound setting. */
+  readySound?: ReadySound | null;
   status: ThreadStatus;
   createdAt: string;
   updatedAt: string;

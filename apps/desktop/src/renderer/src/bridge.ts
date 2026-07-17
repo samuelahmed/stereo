@@ -7,6 +7,7 @@ import type {
   Project,
   ProjectInspection,
   QueuedMessage,
+  ReadySound,
   Settings,
   Thread,
   ThreadEvent,
@@ -29,6 +30,7 @@ export interface StereoApi {
   previewFile(filePath: string): Promise<string | null>;
   createThread(input: { cwd: string; projectId?: string; agent: AgentSelection; permission?: Thread["permission"] }): Promise<Thread>;
   setThreadPermission(threadId: string, permission: Thread["permission"]): Promise<Thread>;
+  setThreadReadySound(threadId: string, readySound: ReadySound | null): Promise<Thread>;
   setThreadAgent(threadId: string, agent: AgentSelection): Promise<Thread>;
   renameThread(threadId: string, title: string): Promise<Thread>;
   setThreadArchived(threadId: string, archived: boolean): Promise<Thread>;
@@ -78,7 +80,7 @@ function createMock(): StereoApi {
     defaultPermission: "workspace-write",
     editor: "auto",
     notifyOnComplete: false,
-    soundOnComplete: false,
+    readySound: "off",
   };
   const threads = new Map<string, Thread>();
   const events = new Map<string, EventEnvelope[]>();
@@ -206,6 +208,14 @@ function createMock(): StereoApi {
       const thread = threads.get(threadId);
       if (!thread) throw new Error(`Unknown thread ${threadId}`);
       thread.permission = permission;
+      pushThreads();
+      return thread;
+    },
+    setThreadReadySound: async (threadId, readySound) => {
+      const thread = threads.get(threadId);
+      if (!thread) throw new Error(`Unknown thread ${threadId}`);
+      thread.readySound = readySound;
+      thread.updatedAt = new Date().toISOString();
       pushThreads();
       return thread;
     },

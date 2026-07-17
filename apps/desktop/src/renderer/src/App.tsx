@@ -1,5 +1,5 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AgentSelection, AgentStatusInfo, Attachment, DiffStats, EventEnvelope, PermissionMode, Project, QueuedMessage, Settings, Thread as ThreadT } from "@stereo/core";
+import type { AgentSelection, AgentStatusInfo, Attachment, DiffStats, EventEnvelope, PermissionMode, Project, QueuedMessage, ReadySound, Settings, Thread as ThreadT } from "@stereo/core";
 import { defaultAgentSelection } from "@stereo/core/models";
 import { bridgeFailed, isMock, stereo } from "./bridge";
 import { AGENT_NAME, agentSummary, formatTokens, otherAgent, shortPath } from "./labels";
@@ -29,6 +29,12 @@ function loadSidebarWidth(): number {
   } catch {
     return 248;
   }
+}
+
+function readySoundLabel(sound: ReadySound): string {
+  if (sound === "prominent") return "Prominent";
+  if (sound === "standard") return "Standard";
+  return "Off";
 }
 
 export function App() {
@@ -540,6 +546,23 @@ export function App() {
                           <option value="workspace-write">Write</option>
                           {selected.agent.agent === "claude" && <option value="ask">Ask before writes</option>}
                           <option value="read-only">Read only</option>
+                        </select>
+                      </div>
+                      <div className="thread-info-row">
+                        <label htmlFor="thread-ready-sound">Sound</label>
+                        <select
+                          id="thread-ready-sound"
+                          value={selected.readySound ?? "inherit"}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            void stereo.setThreadReadySound(selected.id, value === "inherit" ? null : value as ReadySound)
+                              .catch((error) => setAppError(error instanceof Error ? error.message : String(error)));
+                          }}
+                        >
+                          <option value="inherit">Use app default ({readySoundLabel(settings?.readySound ?? "off")})</option>
+                          <option value="off">Off for this thread</option>
+                          <option value="standard">Standard</option>
+                          <option value="prominent">Prominent (repeat)</option>
                         </select>
                       </div>
                       <div className="thread-info-row usage-detail">

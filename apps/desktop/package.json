@@ -1,12 +1,14 @@
 {
   "name": "@stereo/desktop",
+  "productName": "Stereo",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev --watch",
-    "stereo": "electron-vite preview",
+    "stereo": "electron-vite build && electron-vite preview",
+    "icons": "node scripts/generate-app-icons.cjs",
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json"
   },
