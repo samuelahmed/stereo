@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AgentStatusInfo, Project, Settings, Thread } from "@stereo/core";
+import type { Project, Thread } from "@stereo/core";
 import { AGENT_NAME, timeAgo } from "../labels";
-import { AgentPicker } from "./AgentPicker";
 import { StereoBrandCharacter } from "./StereoBrandCharacter";
 
 interface Props {
@@ -9,8 +8,6 @@ interface Props {
   projects: Project[];
   selectedId: string | null;
   unreadIds: Set<string>;
-  agents: { claude: AgentStatusInfo; codex: AgentStatusInfo } | null;
-  settings: Settings | null;
   width: number;
   onWidthChange(width: number): void;
   onSelect(id: string | null): void;
@@ -18,9 +15,8 @@ interface Props {
   onArchive(thread: Thread, archived: boolean): Promise<void>;
   onDelete(thread: Thread): Promise<void>;
   onOpenDirectory(thread: Thread): Promise<void>;
-  onSettingsChange(settings: Settings): void;
   onProjectSettings(projectId: string): void;
-  onCommandPalette(): void;
+  onSettings(): void;
 }
 
 type ThreadAction = { kind: "rename" | "delete"; thread: Thread } | null;
@@ -171,8 +167,12 @@ function SwipeableThreadRow({
         }}
       >
         <button className="thread-item-main" onClick={onSelect} title={thread.title}>
-          <span className="thread-title"><span className={`status-dot ${thread.agent.agent} ${thread.status === "running" ? "pulse" : ""}`} /><span>{thread.title}</span>{unread && <span className="unread-dot" title="Unread completion" />}</span>
-          <span className="meta">{thread.kind === "review" && <span className="kind-badge">review</span>}<span>{AGENT_NAME[thread.agent.agent]}</span><span className="dim right">{timeAgo(thread.updatedAt)}</span></span>
+          <span className="thread-title">
+            {thread.status === "running" && <span className={`thread-running-dot ${thread.agent.agent}`} title={`${AGENT_NAME[thread.agent.agent]} is working`} />}
+            <span>{thread.title}</span>
+            {unread && <span className="unread-dot" title="Unread completion" />}
+          </span>
+          <span className="meta"><span>{AGENT_NAME[thread.agent.agent]}{thread.kind === "review" ? " · Review" : ""}</span><span className="dim right">{timeAgo(thread.updatedAt)}</span></span>
         </button>
         <button className="thread-more" aria-label={`Actions for ${thread.title}`} title="Thread actions" onClick={(event) => {
           event.stopPropagation();
@@ -205,8 +205,6 @@ export function Sidebar({
   projects,
   selectedId,
   unreadIds,
-  agents,
-  settings,
   width,
   onWidthChange,
   onSelect,
@@ -214,15 +212,13 @@ export function Sidebar({
   onArchive,
   onDelete,
   onOpenDirectory,
-  onSettingsChange,
   onProjectSettings,
-  onCommandPalette,
+  onSettings,
 }: Props) {
   const [query, setQuery] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(loadCollapsedProjects);
   const [contextMenu, setContextMenu] = useState<ContextMenu>(null);
-  const [mainMenu, setMainMenu] = useState(false);
   const [action, setAction] = useState<ThreadAction>(null);
   const [title, setTitle] = useState("");
   const [pending, setPending] = useState(false);
@@ -296,7 +292,6 @@ export function Sidebar({
   useEffect(() => {
     const dismiss = () => {
       setContextMenu(null);
-      setMainMenu(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -309,7 +304,6 @@ export function Sidebar({
       }
       if (event.key === "Escape") {
         setContextMenu(null);
-        setMainMenu(false);
       }
     };
     window.addEventListener("pointerdown", dismiss);
@@ -388,7 +382,6 @@ export function Sidebar({
         <span>＋</span> New thread <span className="new-thread-shortcut">⌘N</span>
       </button>
       <div className="thread-search-wrap">
-        <span className="search-icon" aria-hidden="true">⌕</span>
         <input
           ref={searchRef}
           className="thread-search"
@@ -446,7 +439,7 @@ export function Sidebar({
               return (
                 <div key={thread.id} className={`thread-item archived ${thread.id === selectedId ? "selected" : ""}`} onContextMenu={(event) => { event.preventDefault(); setContextMenu({ thread, x: event.clientX, y: event.clientY }); }}>
                   <button className="thread-item-main" onClick={() => onSelect(thread.id)} title={thread.title}>
-                    <span className="thread-title"><span className={`status-dot ${thread.agent.agent}`} /><span>{thread.title}</span></span>
+                    <span className="thread-title"><span>{thread.title}</span></span>
                     <span className="meta"><span>{projectName ?? AGENT_NAME[thread.agent.agent]}</span><span className="dim right">{timeAgo(thread.archivedAt ?? thread.updatedAt)}</span></span>
                   </button>
                   <button className="thread-more" aria-label={`Actions for ${thread.title}`} title="Thread actions" onClick={(event) => { event.stopPropagation(); const rect = event.currentTarget.getBoundingClientRect(); setContextMenu({ thread, x: rect.right - 180, y: rect.bottom + 4 }); }}>•••</button>
@@ -458,70 +451,10 @@ export function Sidebar({
         )}
       </div>
       <div className="sidebar-footer">
-        <button
-          className="main-menu-button"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation();
-            setMainMenu((open) => !open);
-          }}
-        >
-          <span className="menu-status-dots">
-            <span className="status-dot claude" />
-            <span className="status-dot codex" />
-          </span>
-          <span>Menu & settings</span>
-          <span className="main-menu-chevron">⌃</span>
+        <button className="settings-button" onClick={onSettings}>
+          <span>Settings</span>
+          <kbd>⌘,</kbd>
         </button>
-        {mainMenu && settings && (
-          <div className="main-menu" role="dialog" aria-label="Menu and settings" onPointerDown={(event) => event.stopPropagation()}>
-            <div className="main-menu-heading">Stereo</div>
-            <button className="main-menu-action" onClick={() => { onSelect(null); setMainMenu(false); }}>
-              <span>New thread</span><kbd>⌘N</kbd>
-            </button>
-            <button className="main-menu-action" onClick={() => { setMainMenu(false); onCommandPalette(); }}><span>Command palette</span><kbd>⌘⇧P</kbd></button>
-            <div className="main-menu-section">
-              <div className="main-menu-label">New thread default</div>
-              <AgentPicker value={settings.defaultAgent} onChange={(defaultAgent) => onSettingsChange({ ...settings, defaultAgent })} agents={agents} />
-            </div>
-            <div className="main-menu-section harness-status">
-              <div className="main-menu-label">Harnesses</div>
-              {agents ? (["claude", "codex"] as const).map((id) => (
-                <div className="main-menu-status" key={id}>
-                  <span className={`status-dot ${id}`} style={{ opacity: agents[id].installed ? 1 : 0.25 }} />
-                  <span>{AGENT_NAME[id]}</span>
-                  <span>{agents[id].installed ? agents[id].auth ?? "Ready" : "Not installed"}</span>
-                </div>
-              )) : <div className="sidebar-loading">Checking local agents…</div>}
-            </div>
-            <div className="main-menu-section menu-form">
-              <label>
-                <span>Default access</span>
-                <select value={settings.defaultPermission} onChange={(event) => onSettingsChange({ ...settings, defaultPermission: event.target.value as Settings["defaultPermission"] })}>
-                  <option value="workspace-write">Workspace write</option>
-                  {settings.defaultAgent.agent === "claude" && <option value="ask">Ask before writes</option>}
-                  <option value="read-only">Read only</option>
-                </select>
-              </label>
-              <label>
-                <span>Open files in</span>
-                <select value={settings.editor} onChange={(event) => onSettingsChange({ ...settings, editor: event.target.value as Settings["editor"] })}>
-                  <option value="auto">Auto-detect editor</option>
-                  <option value="vscode">Visual Studio Code</option>
-                  <option value="cursor">Cursor</option>
-                  <option value="zed">Zed</option>
-                  <option value="system">System default</option>
-                </select>
-              </label>
-              <label className="menu-checkbox">
-                <span>Completion notifications</span>
-                <input type="checkbox" checked={settings.notifyOnComplete} onChange={(event) => onSettingsChange({ ...settings, notifyOnComplete: event.target.checked })} />
-              </label>
-            </div>
-            <div className="permission-note">Stereo uses the native CLI subscriptions already signed in on this computer. Access is a default for new threads; Claude can also ask before write actions.</div>
-            <div className="main-menu-shortcuts"><span>Search threads</span><kbd>⌘K</kbd><span>Session controls</span><kbd>⌘,</kbd><span>Interrupt</span><kbd>Esc</kbd></div>
-          </div>
-        )}
       </div>
 
       <div

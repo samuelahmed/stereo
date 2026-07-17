@@ -14,6 +14,7 @@ import type {
   Settings,
   Thread,
   ThreadEvent,
+  ToolEventData,
   TokenUsage,
 } from "./types.js";
 import type { AgentAdapter, TurnHandle } from "./adapters/types.js";
@@ -396,7 +397,7 @@ export class Engine extends EventEmitter {
     });
     const permission = agent.agent === "codex" && source.permission === "ask" ? "workspace-write" : source.permission;
     const thread = this.createThread({ cwd: source.cwd, projectId: source.projectId, agent, permission });
-    thread.title = source.title === "New thread" ? "New thread" : `⑂ ${source.title}`;
+    thread.title = source.title === "New thread" ? "New thread" : `Fork: ${source.title}`;
     thread.forkedFrom = { threadId: source.id, title: source.title };
     thread.pendingBriefing = compiled.text;
     this.emitEvent(thread.id, {
@@ -529,7 +530,7 @@ export class Engine extends EventEmitter {
     const callbacks = {
       onDelta: (text: string) => this.emit("delta", { threadId: thread.id, text }),
       onText: (text: string) => this.emitEvent(thread.id, { type: "agent-text", text }),
-      onTool: (name: string, detail: string) => this.emitEvent(thread.id, { type: "tool", name, detail }),
+      onTool: (tool: ToolEventData) => this.emitEvent(thread.id, { type: "tool", ...tool }),
       onArtifact: (filePath: string) => {
         const artifact = this.importArtifact(thread.id, filePath, artifactOrdinal + 1);
         if (!artifact) return;
@@ -550,7 +551,7 @@ export class Engine extends EventEmitter {
           tool,
           title: `${thread.agent.agent === "claude" ? "Claude" : "Codex"} wants to use ${tool}`,
           detail,
-          input: {},
+          input,
           createdAt: new Date().toISOString(),
         };
         this.emitEvent(thread.id, { type: "permission-request", request });

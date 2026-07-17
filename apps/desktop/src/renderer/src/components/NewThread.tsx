@@ -2,6 +2,7 @@ import type { AgentSelection, Attachment, PermissionMode } from "@stereo/core";
 import { shortPath } from "../labels";
 import { AgentPicker, type AgentCatalog } from "./AgentPicker";
 import { Composer } from "./Composer";
+import { StereoBrandCharacter } from "./StereoBrandCharacter";
 
 interface Props {
   cwd: string | null;
@@ -21,7 +22,7 @@ export function NewThread({ cwd, recentDirs, agent, permission, agents, onPickDi
   return (
     <>
       <div className="hero">
-        <div className="hero-mark">◐</div>
+        <StereoBrandCharacter motion="none" className="hero-character" />
         <div className="hero-title">Both frontier labs. One window.</div>
         <div className="hero-sub">
           A thread is a terminal session that never dies — it runs Claude Code or Codex in your repo, on your

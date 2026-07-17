@@ -135,8 +135,34 @@ export function claudeAdapter(spec: AgentSelection, permission: PermissionMode):
                 if (b.type === "text" && typeof b.text === "string" && b.text.trim()) {
                   cb.onText(b.text);
                 } else if (b.type === "tool_use" && typeof b.name === "string") {
-                  cb.onTool(b.name, toolDetail(b.name, b.input));
+                  cb.onTool({
+                    callId: typeof b.id === "string" ? b.id : undefined,
+                    name: b.name,
+                    detail: toolDetail(b.name, b.input),
+                    input: b.input,
+                    phase: "started",
+                  });
                 }
+              }
+              continue;
+            }
+
+            // Claude reports tool results as user content blocks. Pair them
+            // with their tool_use call so Stereo can stay concise by default
+            // without throwing away the underlying engineering evidence.
+            if (m.type === "user") {
+              const inner = rec(m.message);
+              const content = Array.isArray(inner.content) ? (inner.content as unknown[]) : [];
+              for (const rawBlock of content) {
+                const b = rec(rawBlock);
+                if (b.type !== "tool_result") continue;
+                cb.onTool({
+                  callId: typeof b.tool_use_id === "string" ? b.tool_use_id : undefined,
+                  name: "Tool",
+                  detail: "",
+                  output: b.is_error === undefined ? b.content : { content: b.content, isError: b.is_error },
+                  phase: "completed",
+                });
               }
               continue;
             }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import type { AgentId, AssistantArtifact, EventEnvelope, Thread as ThreadT } from "@stereo/core";
+import type { AgentId, AssistantArtifact, EventEnvelope, Thread as ThreadT, ToolEventData } from "@stereo/core";
 import { AGENT_NAME, formatTokens } from "../labels";
 import { Markdown } from "./Markdown";
 import { AttachmentPreview } from "./AttachmentPreview";
@@ -61,22 +61,52 @@ function ArtifactGroup({ envelopes, agent }: { envelopes: EventEnvelope[]; agent
   );
 }
 
-function ToolIcon({ name }: { name: string }) {
-  const normalized = name.toLowerCase();
-  const glyph = normalized.includes("read")
-    ? "R"
-    : normalized.includes("grep") || normalized.includes("search")
-      ? "S"
-      : normalized.includes("edit") || normalized.includes("write") || normalized.includes("patch")
-        ? "E"
-        : normalized.includes("bash") || normalized.includes("shell") || normalized.includes("command")
-          ? ">"
-          : "·";
-  return <span className="tool-icon" aria-hidden="true">{glyph}</span>;
+function mergedTools(envelopes: EventEnvelope[]): ToolEventData[] {
+  const calls: ToolEventData[] = [];
+  const byId = new Map<string, ToolEventData>();
+  for (const envelope of envelopes) {
+    if (envelope.event.type !== "tool") continue;
+    const event = envelope.event;
+    const existing = event.callId ? byId.get(event.callId) : undefined;
+    if (!existing) {
+      const call = { ...event };
+      calls.push(call);
+      if (call.callId) byId.set(call.callId, call);
+      continue;
+    }
+    if (event.name && event.name !== "Tool") existing.name = event.name;
+    if (event.detail) existing.detail = event.detail;
+    if (event.input !== undefined) existing.input = event.input;
+    if (event.output !== undefined) existing.output = event.output;
+    if (event.phase) existing.phase = event.phase;
+  }
+  return calls;
+}
+
+function toolValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2) ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function ToolEvidence({ label, value }: { label: string; value: unknown }) {
+  const text = toolValue(value);
+  return (
+    <section className="tool-evidence-section">
+      <div className="tool-evidence-heading">
+        <span>{label}</span>
+        <button type="button" onClick={() => void navigator.clipboard.writeText(text).catch(() => {})}>Copy</button>
+      </div>
+      <pre>{text}</pre>
+    </section>
+  );
 }
 
 function ToolGroup({ envelopes, agent }: { envelopes: EventEnvelope[]; agent: AgentId }) {
-  const tools = envelopes.flatMap((envelope) => (envelope.event.type === "tool" ? [envelope.event] : []));
+  const tools = mergedTools(envelopes);
   const last = tools.at(-1);
 
   return (
@@ -88,11 +118,18 @@ function ToolGroup({ envelopes, agent }: { envelopes: EventEnvelope[]; agent: Ag
       </summary>
       <div className="tool-list">
         {tools.map((tool, index) => (
-          <div className="tool-call" key={`${envelopes[index]?.seq ?? index}-${tool.name}`}>
-            <ToolIcon name={tool.name} />
-            <span className="tool-name">{tool.name}</span>
-            <span className="tool-detail" title={tool.detail}>{tool.detail}</span>
-          </div>
+          <details className="tool-call" key={tool.callId ?? `${envelopes[index]?.seq ?? index}-${tool.name}`}>
+            <summary>
+              <span className="tool-name">{tool.name}</span>
+              <span className="tool-detail" title={tool.detail}>{tool.detail || (tool.phase === "started" ? "Running…" : "Details")}</span>
+            </summary>
+            <div className="tool-evidence">
+              {tool.input !== undefined && <ToolEvidence label="Input" value={tool.input} />}
+              {tool.output !== undefined && <ToolEvidence label="Output" value={tool.output} />}
+              {tool.input === undefined && tool.output === undefined && <ToolEvidence label="Detail" value={tool.detail || "No additional data was provided by the harness."} />}
+              {tool.phase === "started" && tool.output === undefined && <div className="tool-evidence-note">The harness has not provided a result yet.</div>}
+            </div>
+          </details>
         ))}
       </div>
     </details>
@@ -127,9 +164,9 @@ function EventRow({ envelope, agent, onOpenLink, resolvedPermissions, onResolveP
       return (
         <details className="briefing-card">
           <summary>
-            ⑂ Context handoff · ~{formatTokens(e.approxTokens * 1)} tokens
+            Context handoff · ~{formatTokens(e.approxTokens * 1)} tokens
             {e.trimmedEvents > 0 && (
-              <span className="trim-warning"> · ⚠ {e.trimmedEvents} oldest events trimmed to fit the context budget</span>
+              <span className="trim-warning"> · {e.trimmedEvents} oldest events trimmed to fit the context budget</span>
             )}
           </summary>
           <pre>{e.text}</pre>
@@ -167,7 +204,7 @@ function EventRow({ envelope, agent, onOpenLink, resolvedPermissions, onResolveP
     case "permission-response":
       return null;
     case "checkpoint":
-      return <div className="checkpoint-line"><span>◇</span> {e.label}</div>;
+      return <div className="checkpoint-line">{e.label}</div>;
     case "compacted":
       return <div className="notice-line">↘ Context compacted to ~{formatTokens(e.approxTokens)} tokens{e.trimmedEvents ? ` · ${e.trimmedEvents} older events omitted` : ""}</div>;
     case "turn-end":
@@ -177,9 +214,9 @@ function EventRow({ envelope, agent, onOpenLink, resolvedPermissions, onResolveP
         </div>
       );
     case "interrupted":
-      return <div className="interrupt-line">◼ Interrupted — the session is intact, send a message to continue</div>;
+      return <div className="interrupt-line">Interrupted — the session is intact, send a message to continue</div>;
     case "notice":
-      return <div className="notice-line">⟳ {e.text}</div>;
+      return <div className="notice-line">{e.text}</div>;
     case "error":
       return <div className="error-card">{e.message}</div>;
     case "diff":

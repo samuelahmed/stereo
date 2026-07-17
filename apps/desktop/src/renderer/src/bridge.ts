@@ -130,14 +130,16 @@ function createMock(): StereoApi {
     thread.updatedAt = new Date().toISOString();
     pushThreads();
     await wait(350);
-    emit(thread.id, { type: "tool", name: "Read", detail: "src/session.spec.ts" });
+    emit(thread.id, { type: "tool", callId: "mock-read", name: "Read", detail: "src/session.spec.ts", input: { file_path: "src/session.spec.ts", offset: 1, limit: 240 }, phase: "started" });
     await wait(420);
-    emit(thread.id, { type: "tool", name: "Grep", detail: "refreshToken" });
+    emit(thread.id, { type: "tool", callId: "mock-read", name: "Read", detail: "", output: "1  describe('session refresh', () => {\n2    beforeEach(() => vi.useFakeTimers())\n3    // … complete file contents from the harness …", phase: "completed" });
+    emit(thread.id, { type: "tool", callId: "mock-grep", name: "Grep", detail: "refreshToken", input: { pattern: "refreshToken", path: "src" }, output: "src/session.ts:84: await refreshToken()\nsrc/session.spec.ts:37: expect(refreshToken)", phase: "completed" });
     await wait(420);
-    emit(thread.id, { type: "tool", name: "Edit", detail: "src/session.spec.ts" });
+    emit(thread.id, { type: "tool", callId: "mock-edit", name: "Edit", detail: "src/session.spec.ts", input: { file_path: "src/session.spec.ts", old_string: "afterEach(() => vi.useRealTimers())", new_string: "afterEach(async () => {\n  await vi.runAllTimersAsync()\n  vi.useRealTimers()\n})" }, output: "Updated src/session.spec.ts", phase: "completed" });
     await wait(380);
-    emit(thread.id, { type: "tool", name: "Bash", detail: "pnpm test session" });
+    emit(thread.id, { type: "tool", callId: "mock-bash", name: "Bash", detail: "pnpm test session", input: { command: "pnpm test session" }, phase: "started" });
     await wait(600);
+    emit(thread.id, { type: "tool", callId: "mock-bash", name: "Bash", detail: "", output: "✓ src/session.spec.ts (21 tests)\n\nTest Files  1 passed\nTests       21 passed", phase: "completed" });
     // Stream the reply token-ish chunk by chunk, then persist the whole block.
     for (let i = 0; i < MOCK_REPLY.length; i += 7) {
       deltaHandlers.forEach((h) => h({ threadId: thread.id, text: MOCK_REPLY.slice(i, i + 7) }));
@@ -260,7 +262,7 @@ function createMock(): StereoApi {
     forkThread: async (threadId, agent) => {
       const source = threads.get(threadId)!;
       const t = makeThread(source.cwd, agent);
-      t.title = `⑂ ${source.title}`;
+      t.title = `Fork: ${source.title}`;
       t.forkedFrom = { threadId: source.id, title: source.title };
       emit(t.id, {
         type: "briefing",

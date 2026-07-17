@@ -1,12 +1,12 @@
-import type { AgentId, TokenUsage } from "../types.js";
+import type { AgentId, TokenUsage, ToolEventData } from "../types.js";
 
 export interface TurnCallbacks {
   /** Ephemeral streaming text — rendered live, never persisted. */
   onDelta(text: string): void;
   /** A completed text block — persisted to the transcript. */
   onText(text: string): void;
-  /** A tool invocation with human-readable detail (command, file path, …). */
-  onTool(name: string, detail: string): void;
+  /** A tool invocation/result with a concise summary and complete provider data. */
+  onTool(tool: ToolEventData): void;
   /** A provider-produced local file that the host should validate and import. */
   onArtifact(filePath: string): void;
   /** Authoritative usage for the turn, reported once from the final result. */

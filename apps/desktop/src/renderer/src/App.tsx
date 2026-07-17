@@ -6,7 +6,7 @@ import { AGENT_NAME, agentSummary, formatTokens, otherAgent, shortPath } from ".
 import { AgentPicker } from "./components/AgentPicker";
 import { Composer } from "./components/Composer";
 import { CommandPalette, type PaletteCommand } from "./components/CommandPalette";
-import { ControlCenter } from "./components/ControlCenter";
+import { ControlCenter, type ControlTab } from "./components/ControlCenter";
 import { NewThread } from "./components/NewThread";
 import { QueueList } from "./components/QueueList";
 import { Sidebar } from "./components/Sidebar";
@@ -52,10 +52,11 @@ export function App() {
   const [menu, setMenu] = useState<"fork" | "review" | null>(null);
   const [menuAgent, setMenuAgent] = useState<AgentSelection>(() => defaultAgentSelection("codex"));
   const [threadAgentDraft, setThreadAgentDraft] = useState<AgentSelection | null>(null);
-  const [controlTab, setControlTab] = useState<"project" | "diagnostics" | null>(null);
+  const [controlTab, setControlTab] = useState<ControlTab | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
   const selected = useMemo(() => threads.find((t) => t.id === selectedId) ?? null, [threads, selectedId]);
+  const selectedProject = useMemo(() => selected ? projects.find((project) => project.id === selected.projectId) ?? null : null, [projects, selected]);
   const selectedRef = useRef<ThreadT | null>(null);
   selectedRef.current = selected;
   const selectedIdRef = useRef<string | null>(null);
@@ -159,9 +160,9 @@ export function App() {
         setPaletteOpen((open) => !open);
         return;
       }
-      if ((e.metaKey || e.ctrlKey) && e.key === "," && current) {
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
         e.preventDefault();
-        setControlTab("project");
+        setControlTab("app");
         return;
       }
       if (e.key === "Escape" && current?.status === "running" && !document.querySelector('[role="dialog"], [role="menu"]')) {
@@ -419,8 +420,9 @@ export function App() {
   const stats = selected ? statsByThread[selected.id] : null;
   const paletteCommands: PaletteCommand[] = [
     { id: "new", label: "New thread", detail: "Start a conversation in a project", group: "Stereo", shortcut: "⌘N", run: () => selectThread(null) },
-    { id: "project", label: "Project settings", detail: "Defaults and configuration files", group: "Project", shortcut: "⌘,", disabled: !selected, run: () => setControlTab("project") },
-    { id: "diagnostics", label: "Session diagnostics", detail: "Recovery state and native CLI escape hatch", group: "Harness", disabled: !selected, run: () => setControlTab("diagnostics") },
+    { id: "settings", label: "Settings", detail: "App defaults and local harnesses", group: "Stereo", shortcut: "⌘,", run: () => setControlTab("app") },
+    { id: "project", label: "Project settings", detail: "Defaults and configuration files", group: "Project", disabled: !selected, run: () => setControlTab("project") },
+    { id: "diagnostics", label: "Session diagnostics", detail: "Recovery state and native CLI escape hatch", group: "Harness", disabled: !selected, run: () => setControlTab("session") },
     { id: "fork", label: "Fork conversation", detail: "Continue with another harness", group: "Conversation", disabled: !selected || selected.status === "running", run: () => openMenu("fork") },
     { id: "review", label: "Review working tree", detail: "Ask the other harness for a read-only second opinion", group: "Conversation", disabled: !selected || selected.status === "running", run: () => openMenu("review") },
     { id: "folder", label: "Open working folder", detail: selected?.cwd ?? "No active project", group: "Project", disabled: !selected, run: () => { if (selected) void openDirectory(selected); } },
@@ -434,8 +436,6 @@ export function App() {
         projects={projects}
         selectedId={selectedId}
         unreadIds={unreadIds}
-        agents={agents}
-        settings={settings}
         width={sidebarWidth}
         onWidthChange={resizeSidebar}
         onSelect={selectThread}
@@ -443,7 +443,6 @@ export function App() {
         onArchive={archiveThread}
         onDelete={deleteThread}
         onOpenDirectory={openDirectory}
-        onSettingsChange={settingsChange}
         onProjectSettings={(projectId) => {
           const thread = threads.find((candidate) => candidate.projectId === projectId);
           if (thread) {
@@ -451,7 +450,7 @@ export function App() {
             setControlTab("project");
           }
         }}
-        onCommandPalette={() => setPaletteOpen(true)}
+        onSettings={() => setControlTab("app")}
       />
       <div className="main">
         {isMock && <div className="mock-banner">Browser design preview — mock engine. Run the Stereo desktop app for real agents.</div>}
@@ -460,82 +459,88 @@ export function App() {
         ) : selected ? (
           <>
             <div className="thread-header">
-              <span className={`status-dot ${selected.agent.agent} ${selected.status === "running" ? "pulse" : ""}`} />
-              <span className="title">{selected.title}</span>
-              <button className="chip cwd-chip" title={`Open ${selected.cwd}`} onClick={() => void openDirectory(selected)}>
-                {shortPath(selected.cwd)}
-              </button>
-              <div className="agent-chip-wrap">
-                <button
-                  className={`chip agent-chip ${selected.agent.agent}`}
-                  title="Change model and thinking effort"
-                  onClick={() => {
-                    setMenu(null);
-                    setThreadAgentDraft((current) => current ? null : { ...selected.agent });
-                  }}
-                >
-                  {agentSummary(selected.agent)} <span aria-hidden="true">⌄</span>
-                </button>
-                {threadAgentDraft && (
-                  <>
-                    <div className="menu-dismiss" onClick={() => setThreadAgentDraft(null)} />
-                    <div className="action-menu model-menu" role="dialog" aria-label="Thread model settings">
-                      <div className="action-menu-title">Model for future turns in this thread</div>
-                      <AgentPicker
-                        value={threadAgentDraft}
-                        onChange={setThreadAgentDraft}
-                        agents={agents}
-                        allowAgentChange={false}
-                        disabled={selected.status === "running" || Boolean(selected.archivedAt) || (queueByThread[selected.id]?.length ?? 0) > 0}
-                      />
-                      {(selected.status === "running" || (queueByThread[selected.id]?.length ?? 0) > 0) && (
-                        <div className="model-menu-note">Finish the running and queued work before changing models.</div>
-                      )}
-                      {selected.archivedAt && <div className="model-menu-note">Restore this thread before changing models.</div>}
-                      <div className="model-menu-actions">
-                        <button className="btn ghost" onClick={() => setThreadAgentDraft(null)}>Cancel</button>
-                        <button
-                          className="btn primary"
-                          disabled={selected.status === "running" || Boolean(selected.archivedAt) || (queueByThread[selected.id]?.length ?? 0) > 0}
-                          onClick={() => void saveThreadAgent()}
-                        >
-                          Apply
-                        </button>
-                      </div>
-                      <div className="model-menu-note">To switch between Claude and Codex, fork the thread.</div>
-                    </div>
-                  </>
-                )}
+              <div className="thread-identity">
+                <div className="title" title={selected.title}>{selected.title}</div>
+                <div className="thread-meta">
+                  <button className="thread-meta-control repo" title={`Open ${selected.cwd}`} onClick={() => void openDirectory(selected)}>
+                    {selectedProject?.name ?? shortPath(selected.cwd)}
+                  </button>
+                  <span className="meta-separator">·</span>
+                  <div className="agent-chip-wrap">
+                    <button
+                      className={`thread-meta-control agent-chip ${selected.agent.agent}`}
+                      title="Change model and thinking effort"
+                      onClick={() => {
+                        setMenu(null);
+                        setThreadAgentDraft((current) => current ? null : { ...selected.agent });
+                      }}
+                    >
+                      {agentSummary(selected.agent)}
+                    </button>
+                    {threadAgentDraft && (
+                      <>
+                        <div className="menu-dismiss" onClick={() => setThreadAgentDraft(null)} />
+                        <div className="action-menu model-menu" role="dialog" aria-label="Thread model settings">
+                          <div className="action-menu-title">Model for future turns in this thread</div>
+                          <AgentPicker
+                            value={threadAgentDraft}
+                            onChange={setThreadAgentDraft}
+                            agents={agents}
+                            allowAgentChange={false}
+                            disabled={selected.status === "running" || Boolean(selected.archivedAt) || (queueByThread[selected.id]?.length ?? 0) > 0}
+                          />
+                          {(selected.status === "running" || (queueByThread[selected.id]?.length ?? 0) > 0) && (
+                            <div className="model-menu-note">Finish the running and queued work before changing models.</div>
+                          )}
+                          {selected.archivedAt && <div className="model-menu-note">Restore this thread before changing models.</div>}
+                          <div className="model-menu-actions">
+                            <button className="btn ghost" onClick={() => setThreadAgentDraft(null)}>Cancel</button>
+                            <button
+                              className="btn primary"
+                              disabled={selected.status === "running" || Boolean(selected.archivedAt) || (queueByThread[selected.id]?.length ?? 0) > 0}
+                              onClick={() => void saveThreadAgent()}
+                            >
+                              Apply
+                            </button>
+                          </div>
+                          <div className="model-menu-note">To switch between Claude and Codex, fork the thread.</div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <span className="meta-separator">·</span>
+                  <select
+                    className="thread-meta-control permission-select"
+                    aria-label="Thread access"
+                    title="Access for future turns in this thread"
+                    disabled={Boolean(selected.archivedAt)}
+                    value={selected.permission}
+                    onChange={(event) => void stereo.setThreadPermission(selected.id, event.target.value as PermissionMode).catch((error) => setAppError(error instanceof Error ? error.message : String(error)))}
+                  >
+                    <option value="workspace-write">Write</option>
+                    {selected.agent.agent === "claude" && <option value="ask">Ask before writes</option>}
+                    <option value="read-only">Read only</option>
+                  </select>
+                  <span className="meta-separator usage-separator">·</span>
+                  <span className="header-usage">{formatTokens(selected.usage.inputTokens + selected.usage.outputTokens)} tokens</span>
+                </div>
               </div>
-              <select
-                className="chip permission-select"
-                aria-label="Thread access"
-                title="Access for future turns in this thread"
-                disabled={Boolean(selected.archivedAt)}
-                value={selected.permission}
-                onChange={(event) => void stereo.setThreadPermission(selected.id, event.target.value as PermissionMode).catch((error) => setAppError(error instanceof Error ? error.message : String(error)))}
-              >
-                <option value="workspace-write">Write access</option>
-                {selected.agent.agent === "claude" && <option value="ask">Ask before writes</option>}
-                <option value="read-only">Read only</option>
-              </select>
+              <span className="spacer" />
               {stats &&
                 (stats.filesChanged === 0 ? (
-                  <span className="chip diff-chip clean">clean</span>
+                  <span className="repo-state clean">Clean</span>
                 ) : (
-                  <span className="chip diff-chip">
+                  <span className="repo-state">
                     {stats.filesChanged} file{stats.filesChanged === 1 ? "" : "s"} <span className="add">+{stats.additions}</span>{" "}
                     <span className="del">−{stats.deletions}</span>
                   </span>
                 ))}
-              <span className="spacer" />
-              <span className="usage">{formatTokens(selected.usage.inputTokens + selected.usage.outputTokens)} used</span>
               <div className="header-actions">
-                <button className="btn ghost" disabled={selected.status === "running"} onClick={() => openMenu("fork")}>
-                  ⑂ Fork
+                <button className="header-action" disabled={selected.status === "running"} onClick={() => openMenu("fork")}>
+                  Fork
                 </button>
-                <button className="btn" disabled={selected.status === "running"} onClick={() => openMenu("review")}>
-                  ◐ Review
+                <button className={`header-action review ${stats && stats.filesChanged > 0 ? "has-changes" : ""}`} disabled={selected.status === "running"} onClick={() => openMenu("review")}>
+                  Review
                 </button>
                 {menu && (
                   <>
@@ -583,7 +588,7 @@ export function App() {
                 <Composer
                   key={selected.id}
                   draftKey={`thread:${selected.id}`}
-                  placeholder={`Message ${AGENT_NAME[selected.agent.agent]} — it resumes right where the thread left off`}
+                  placeholder={`Message ${AGENT_NAME[selected.agent.agent]}…`}
                   running={selected.status === "running"}
                   onSubmit={async (text, attachments) => {
                     try {
@@ -624,7 +629,7 @@ export function App() {
             <button onClick={() => setAppError(null)} aria-label="Dismiss">×</button>
           </div>
         )}
-        {selected && controlTab && <ControlCenter thread={selected} agents={agents} initialTab={controlTab} onClose={() => { setControlTab(null); void stereo.listProjects().then(setProjects); }} onError={setAppError} />}
+        {controlTab && settings && <ControlCenter thread={selected} agents={agents} settings={settings} initialTab={controlTab} onSettingsChange={settingsChange} onClose={() => { setControlTab(null); void stereo.listProjects().then(setProjects); }} onError={setAppError} />}
         {paletteOpen && <CommandPalette commands={paletteCommands} onClose={() => setPaletteOpen(false)} />}
       </div>
     </div>

@@ -131,12 +131,25 @@ export interface PermissionRequest {
   createdAt: string;
 }
 
+export interface ToolEventData {
+  /** Provider identifier used to pair a live invocation with its result. */
+  callId?: string;
+  name: string;
+  /** Short human-readable summary used in the collapsed transcript. */
+  detail: string;
+  /** Complete provider input when it is exposed by the harness. */
+  input?: unknown;
+  /** Complete provider result when it is exposed by the harness. */
+  output?: unknown;
+  phase?: "started" | "completed";
+}
+
 export type ThreadEvent =
   | { type: "user-message"; text: string; attachments?: Attachment[]; messageId?: string }
   | { type: "briefing"; text: string; trimmedEvents: number; approxTokens: number }
   | { type: "agent-text"; text: string }
   | { type: "assistant-artifact"; artifact: AssistantArtifact }
-  | { type: "tool"; name: string; detail: string }
+  | ({ type: "tool" } & ToolEventData)
   | { type: "permission-request"; request: PermissionRequest }
   | { type: "permission-response"; requestId: string; allowed: boolean }
   | { type: "checkpoint"; label: string }

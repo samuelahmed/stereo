@@ -46,7 +46,7 @@ function renderEvent(envelope: EventEnvelope, agentLabel: string): TranscriptPar
     case "assistant-artifact":
       return { isUser: false, text: `> [generated ${e.artifact.kind}] ${e.artifact.path.replace(/[\r\n]/g, "")}` };
     case "tool":
-      return { isUser: false, text: `> [${e.name}] ${e.detail}` };
+      return e.detail ? { isUser: false, text: `> [${e.name}] ${e.detail}` } : null;
     case "briefing":
       return { isUser: false, text: `## Handoff context this thread started from\n${e.text}` };
     case "interrupted":
@@ -62,8 +62,15 @@ function renderEvent(envelope: EventEnvelope, agentLabel: string): TranscriptPar
  * intent-dense, portable core of the thread.
  */
 function compileTranscript(events: EventEnvelope[], fromAgent: AgentId, budget: number): CompiledBriefing {
+  const seenToolCalls = new Set<string>();
   const parts = events
-    .map((envelope) => renderEvent(envelope, AGENT_LABEL[fromAgent]))
+    .map((envelope) => {
+      if (envelope.event.type === "tool" && envelope.event.callId) {
+        if (seenToolCalls.has(envelope.event.callId)) return null;
+        seenToolCalls.add(envelope.event.callId);
+      }
+      return renderEvent(envelope, AGENT_LABEL[fromAgent]);
+    })
     .filter((p): p is TranscriptPart => p !== null);
 
   const size = (list: (TranscriptPart | null)[]): number =>

@@ -6,6 +6,11 @@ export function attachmentIsImage(attachment: Attachment): boolean {
   return attachment.mimeType.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg|heic)$/i.test(attachment.name);
 }
 
+function fileLabel(name: string): string {
+  const extension = name.split(".").at(-1);
+  return extension && extension !== name ? extension.slice(0, 4).toUpperCase() : "FILE";
+}
+
 // Previews are full-size files shipped over IPC as data URLs — cache successes
 // so remounts (thread switches, transcript rerenders) don't re-read the disk.
 // Failures are NOT cached: a path can become previewable later (e.g. a restored
@@ -53,8 +58,8 @@ export function AttachmentPreview({ attachment }: { attachment: Attachment }) {
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
   }, [open]);
-  if (!attachmentIsImage(attachment) || failed) return <span className="attachment-file-icon" aria-hidden="true">◇</span>;
-  if (!src) return <span className="attachment-file-icon image" aria-hidden="true">▧</span>;
+  if (!attachmentIsImage(attachment) || failed) return <span className="attachment-file-icon" aria-hidden="true">{fileLabel(attachment.name)}</span>;
+  if (!src) return <span className="attachment-file-icon image" aria-hidden="true">IMG</span>;
   return (
     <>
       <button className="attachment-thumbnail" type="button" title={`Preview ${attachment.name}`} onClick={() => setOpen(true)}>

@@ -89,6 +89,14 @@ function itemDetail(item: Rec): string {
   return "";
 }
 
+function itemOutput(item: Rec): unknown {
+  for (const key of ["aggregated_output", "output", "stdout", "result", "content"]) {
+    if (item[key] !== undefined) return item[key];
+  }
+  const stderr = item.stderr;
+  return stderr !== undefined ? { stderr } : undefined;
+}
+
 /**
  * Runs `codex exec --json` and folds the JSONL event stream into the turn
  * callbacks. Event shapes have drifted across Codex releases, so extraction is
@@ -182,14 +190,25 @@ export function codexAdapter(spec: AgentSelection, permission: PermissionMode): 
               if (typeof item.text === "string" && item.text.trim()) {
                 cb.onText(item.text);
               }
-            } else if (itemType.includes("command") && phase.endsWith("started")) {
-              // Show commands as they start, not after they finish — live feel.
-              cb.onTool("bash", itemDetail(item));
-            } else if (
-              (itemType.includes("patch") || itemType.includes("file") || itemType.includes("search") || itemType.includes("tool")) &&
-              phase.endsWith("completed")
-            ) {
-              cb.onTool(itemType.includes("search") ? "search" : "edit", itemDetail(item));
+            } else {
+              const toolLike = itemType.includes("command") || itemType.includes("patch") || itemType.includes("file") || itemType.includes("search") || itemType.includes("tool");
+              if (toolLike) {
+                const callIdValue = item.id ?? item.call_id ?? event.item_id;
+                const callId = typeof callIdValue === "string" ? callIdValue : undefined;
+                const name = itemType.includes("command") ? "bash" : itemType.includes("search") ? "search" : "edit";
+                if (phase.endsWith("started")) {
+                  cb.onTool({ callId, name, detail: itemDetail(item), input: item, phase: "started" });
+                } else if (phase.endsWith("completed")) {
+                  cb.onTool({
+                    callId,
+                    name,
+                    detail: itemType.includes("command") ? "" : itemDetail(item),
+                    input: itemType.includes("command") ? undefined : item,
+                    output: itemOutput(item) ?? itemOutput(event),
+                    phase: "completed",
+                  });
+                }
+              }
             }
           }
           scanForUsage(event);

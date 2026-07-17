@@ -113,7 +113,7 @@ export function Composer({ draftKey, placeholder, running, disabled = false, onS
   const showStop = running && !hasContent;
 
   return (
-    <div className="composer">
+    <div className={`composer ${running ? "running" : ""}`}>
       <div
         className={`composer-input ${submitting ? "submitting" : ""} ${dragging ? "dragging" : ""}`}
         onDragEnter={(event) => {
@@ -193,13 +193,13 @@ export function Composer({ draftKey, placeholder, running, disabled = false, onS
           <button className="send-btn stop" title="Interrupt (Esc)" aria-label="Interrupt" onClick={onInterrupt}>■</button>
         ) : (
           <button
-            className="send-btn"
+            className={`send-btn ${running ? "queue" : ""}`}
             title={running ? "Queue message" : "Send message"}
             aria-label={running ? "Queue message" : "Send message"}
             disabled={submitting || disabled || !hasContent}
             onClick={() => void submit()}
           >
-            {submitting ? <span className="button-spinner" /> : "↑"}
+            {submitting ? <span className="button-spinner" /> : running ? "Queue" : "↑"}
           </button>
         )}
         {dragging && <div className="drop-target"><span>＋</span> Add to context</div>}
