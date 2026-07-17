@@ -665,6 +665,12 @@ button.new-thread:hover {
   padding: 4px;
 }
 
+.window-drag-region {
+  flex: 0 0 42px;
+  border-bottom: 1px solid var(--border);
+  -webkit-app-region: drag;
+}
+
 .thread-header {
   display: flex;
   align-items: center;

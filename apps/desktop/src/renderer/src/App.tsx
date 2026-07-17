@@ -532,6 +532,7 @@ export function App() {
       />
       <div className="main">
         {isMock && <div className="mock-banner">Browser design preview — mock engine. Run the Stereo desktop app for real agents.</div>}
+        {!selected && <div className="window-drag-region" aria-hidden="true" />}
         {booting ? (
           <div className="app-loading"><span className="loading-spinner" /> Loading your workspace…</div>
         ) : selected ? (
