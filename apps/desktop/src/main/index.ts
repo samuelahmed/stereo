@@ -314,6 +314,7 @@ void app.whenReady().then(() => {
   ipcMain.handle("thread:interrupt", (_e, threadId: string) => engine.interrupt(threadId));
   ipcMain.handle("thread:fork", (_e, threadId: string, agent: AgentSelection) => engine.forkThread(threadId, agent));
   ipcMain.handle("thread:review", (_e, threadId: string, agent: AgentSelection) => engine.reviewThread(threadId, agent));
+  ipcMain.handle("thread:review:promote", (_e, threadId: string) => engine.promoteReview(threadId));
   ipcMain.handle("thread:stats", (_e, threadId: string) => engine.stats(threadId));
   ipcMain.handle("thread:queue", (_e, threadId: string) => engine.queuedFor(threadId));
   ipcMain.handle("thread:queue:remove", (_e, threadId: string, messageId: string) => engine.removeQueued(threadId, messageId));

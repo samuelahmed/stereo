@@ -150,7 +150,7 @@ export function buildReviewBriefing(
   const text = [
     `You are reviewing work done by another AI agent (${AGENT_LABEL[opts.fromAgent]}) in the repository at ${opts.cwd}. The session transcript and the current uncommitted diff are below. You share the same working tree and may read any file for context.`,
     `Review the diff for real defects: bugs, missed requirements, broken edge cases, security problems. Do not raise style preferences. Report findings ordered by severity, each with the file and a concrete failure scenario. If the diff is sound, say so plainly.`,
-    `Do not modify any files unless the user explicitly asks you to fix something.`,
+    `This review starts read-only. Do not modify files during the review. If the user later asks you to implement findings, Stereo may ask them to promote this same thread to write access; once promoted, carry out the request normally without asking them to repeat it.`,
     `--- SESSION TRANSCRIPT ---`,
     transcript.text,
     `--- END TRANSCRIPT ---`,

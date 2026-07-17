@@ -15,8 +15,9 @@ tree in place, and streams everything the agent does.
 - **Fork across labs** — every thread is stored as a vendor-neutral transcript, so any
   thread can be duplicated to the other model with a full context handoff (capped at
   ~200k tokens; trims are always visible, never silent).
-- **Pre-commit review** — one click runs the rival lab read-only over the current
-  uncommitted diff, with any safety truncation shown in the review context.
+- **Pre-commit review** — one click runs Claude or Codex read-only over the current
+  uncommitted diff; a follow-up can promote that same thread to write access after
+  one explicit confirmation.
 - **History forever** — every thread from both vendors, saved locally, browsable.
 - **Come back at the right moment** — optional native notifications and a local
   sound when background work finishes, fails, or needs approval.

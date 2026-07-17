@@ -42,6 +42,7 @@ export interface StereoApi {
   interrupt(threadId: string): Promise<void>;
   forkThread(threadId: string, agent: AgentSelection): Promise<Thread>;
   reviewThread(threadId: string, agent: AgentSelection): Promise<Thread>;
+  promoteReview(threadId: string): Promise<Thread>;
   threadStats(threadId: string): Promise<DiffStats | null>;
   threadQueue(threadId: string): Promise<QueuedMessage[]>;
   removeQueued(threadId: string, messageId: string): Promise<void>;
@@ -68,6 +69,11 @@ const MOCK_REPLY =
   "2. **Awaited the refresh promise** instead of letting it float past the assertion.\n" +
   "3. Made `afterEach` flush pending promises before restoring timers.\n\n" +
   "All 21 tests pass now. The diff is small — worth a quick look at the teardown change in particular.";
+
+const MOCK_REVIEW_REPLY =
+  "I found one issue worth fixing: `afterEach` restores fake timers before the pending refresh promise settles. " +
+  "That can leak work into the next test and explains the intermittent failure. The production change looks sound.\n\n" +
+  "I would update the test teardown to flush pending timers before restoring the real clock. This review is read-only; send a follow-up if you want me to apply that fix.";
 
 /**
  * Outside Electron (plain browser during UI development) window.stereo is
@@ -132,6 +138,9 @@ function createMock(): StereoApi {
   };
 
   const runMockTurn = async (thread: Thread) => {
+    // Capture the turn's sandbox. Promoting a review while this turn is still
+    // running must only affect the queued follow-up, never the active review.
+    const readOnly = thread.permission === "read-only";
     thread.status = "running";
     thread.updatedAt = new Date().toISOString();
     pushThreads();
@@ -140,18 +149,21 @@ function createMock(): StereoApi {
     await wait(420);
     emit(thread.id, { type: "tool", callId: "mock-read", name: "Read", detail: "", output: "1  describe('session refresh', () => {\n2    beforeEach(() => vi.useFakeTimers())\n3    // … complete file contents from the harness …", phase: "completed" });
     emit(thread.id, { type: "tool", callId: "mock-grep", name: "Grep", detail: "refreshToken", input: { pattern: "refreshToken", path: "src" }, output: "src/session.ts:84: await refreshToken()\nsrc/session.spec.ts:37: expect(refreshToken)", phase: "completed" });
-    await wait(420);
-    emit(thread.id, { type: "tool", callId: "mock-edit", name: "Edit", detail: "src/session.spec.ts", input: { file_path: "src/session.spec.ts", old_string: "afterEach(() => vi.useRealTimers())", new_string: "afterEach(async () => {\n  await vi.runAllTimersAsync()\n  vi.useRealTimers()\n})" }, output: "Updated src/session.spec.ts", phase: "completed" });
-    await wait(380);
-    emit(thread.id, { type: "tool", callId: "mock-bash", name: "Bash", detail: "pnpm test session", input: { command: "pnpm test session" }, phase: "started" });
-    await wait(600);
-    emit(thread.id, { type: "tool", callId: "mock-bash", name: "Bash", detail: "", output: "✓ src/session.spec.ts (21 tests)\n\nTest Files  1 passed\nTests       21 passed", phase: "completed" });
+    if (!readOnly) {
+      await wait(420);
+      emit(thread.id, { type: "tool", callId: "mock-edit", name: "Edit", detail: "src/session.spec.ts", input: { file_path: "src/session.spec.ts", old_string: "afterEach(() => vi.useRealTimers())", new_string: "afterEach(async () => {\n  await vi.runAllTimersAsync()\n  vi.useRealTimers()\n})" }, output: "Updated src/session.spec.ts", phase: "completed" });
+      await wait(380);
+      emit(thread.id, { type: "tool", callId: "mock-bash", name: "Bash", detail: "pnpm test session", input: { command: "pnpm test session" }, phase: "started" });
+      await wait(600);
+      emit(thread.id, { type: "tool", callId: "mock-bash", name: "Bash", detail: "", output: "✓ src/session.spec.ts (21 tests)\n\nTest Files  1 passed\nTests       21 passed", phase: "completed" });
+    }
+    const reply = readOnly ? MOCK_REVIEW_REPLY : MOCK_REPLY;
     // Stream the reply token-ish chunk by chunk, then persist the whole block.
-    for (let i = 0; i < MOCK_REPLY.length; i += 7) {
-      deltaHandlers.forEach((h) => h({ threadId: thread.id, text: MOCK_REPLY.slice(i, i + 7) }));
+    for (let i = 0; i < reply.length; i += 7) {
+      deltaHandlers.forEach((h) => h({ threadId: thread.id, text: reply.slice(i, i + 7) }));
       await wait(12);
     }
-    emit(thread.id, { type: "agent-text", text: MOCK_REPLY });
+    emit(thread.id, { type: "agent-text", text: reply });
     thread.usage.inputTokens += 31_000;
     thread.usage.outputTokens += 4200;
     emit(thread.id, { type: "turn-end", usage: { inputTokens: 31_000, outputTokens: 4200 } });
@@ -209,6 +221,7 @@ function createMock(): StereoApi {
     setThreadPermission: async (threadId, permission) => {
       const thread = threads.get(threadId);
       if (!thread) throw new Error(`Unknown thread ${threadId}`);
+      if (thread.kind === "review" && permission !== "read-only") thread.kind = "chat";
       thread.permission = permission;
       pushThreads();
       return thread;
@@ -291,7 +304,7 @@ function createMock(): StereoApi {
     },
     reviewThread: async (threadId, agent) => {
       const source = threads.get(threadId)!;
-      const t = makeThread(source.cwd, agent);
+      const t = makeThread(source.cwd, agent, "read-only");
       t.kind = "review";
       t.title = `Review: ${source.title}`;
       t.forkedFrom = { threadId: source.id, title: source.title };
@@ -304,6 +317,17 @@ function createMock(): StereoApi {
       pushThreads();
       void runMockTurn(t);
       return t;
+    },
+    promoteReview: async (threadId) => {
+      const thread = threads.get(threadId);
+      if (!thread) throw new Error(`Unknown thread ${threadId}`);
+      if (thread.kind !== "review") throw new Error("Only review threads can be promoted");
+      thread.kind = "chat";
+      thread.permission = "workspace-write";
+      thread.updatedAt = new Date().toISOString();
+      emit(thread.id, { type: "notice", text: "Changes approved — this review is now a normal write-enabled thread." });
+      pushThreads();
+      return thread;
     },
     threadStats: async () => ({ filesChanged: 2, additions: 48, deletions: 12 }),
     threadQueue: async () => [],

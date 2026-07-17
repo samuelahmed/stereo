@@ -36,6 +36,7 @@ const api = {
   interrupt: (threadId: string) => ipcRenderer.invoke("thread:interrupt", threadId),
   forkThread: (threadId: string, agent: AgentSelection) => ipcRenderer.invoke("thread:fork", threadId, agent),
   reviewThread: (threadId: string, agent: AgentSelection) => ipcRenderer.invoke("thread:review", threadId, agent),
+  promoteReview: (threadId: string) => ipcRenderer.invoke("thread:review:promote", threadId),
   threadStats: (threadId: string) => ipcRenderer.invoke("thread:stats", threadId),
   threadQueue: (threadId: string) => ipcRenderer.invoke("thread:queue", threadId),
   removeQueued: (threadId: string, messageId: string) => ipcRenderer.invoke("thread:queue:remove", threadId, messageId),

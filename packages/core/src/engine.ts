@@ -30,6 +30,8 @@ import { ThreadStore } from "./store.js";
 
 const MAX_REVIEW_DIFF_CHARS = 200_000;
 const MAX_ARTIFACT_BYTES = 15 * 1024 * 1024;
+const REVIEW_PROMOTION_BRIEFING =
+  "Stereo has promoted this review to a normal working thread after explicit user approval. You now have write access. Apply the user's next request normally; do not ask them to change modes or repeat their approval.";
 const READY_SOUNDS = new Set<ReadySound>(["off", "standard", "prominent"]);
 const ARTIFACT_MIME: Record<string, string> = {
   ".png": "image/png",
@@ -269,8 +271,19 @@ export class Engine extends EventEmitter {
     const thread = this.threads.get(threadId);
     if (!thread) throw new Error(`Unknown thread ${threadId}`);
     if (permission === "ask" && thread.agent.agent === "codex") throw new Error("Codex exec does not expose interactive approvals");
+    const promotedReview = thread.kind === "review" && permission !== "read-only";
+    if (promotedReview) {
+      thread.kind = "chat";
+      thread.pendingBriefing = REVIEW_PROMOTION_BRIEFING;
+    }
     thread.permission = permission;
     thread.updatedAt = new Date().toISOString();
+    if (promotedReview) {
+      this.emitEvent(thread.id, {
+        type: "notice",
+        text: `Changes approved — this review is now a normal ${permission === "ask" ? "approval-gated" : "write-enabled"} thread.`,
+      });
+    }
     this.persist();
     return thread;
   }
@@ -455,6 +468,25 @@ export class Engine extends EventEmitter {
     this.persist();
     // The briefing IS the first turn's prompt — the review starts right away.
     void this.runTurn(thread, compiled.text).then(() => this.pump(thread.id));
+    return thread;
+  }
+
+  /** User-approved one-way transition from a read-only review to a normal working thread. */
+  promoteReview(threadId: string): Thread {
+    const thread = this.threads.get(threadId);
+    if (!thread) throw new Error(`Unknown thread ${threadId}`);
+    if (thread.archivedAt) throw new Error("Restore this review before enabling changes");
+    if (thread.kind !== "review") throw new Error("Only review threads can be promoted");
+
+    thread.kind = "chat";
+    thread.permission = "workspace-write";
+    thread.pendingBriefing = REVIEW_PROMOTION_BRIEFING;
+    thread.updatedAt = new Date().toISOString();
+    this.emitEvent(thread.id, {
+      type: "notice",
+      text: "Changes approved — this review is now a normal write-enabled thread.",
+    });
+    this.persist();
     return thread;
   }
 

@@ -9,10 +9,12 @@ import { CommandPalette, type PaletteCommand } from "./components/CommandPalette
 import { ControlCenter, type ControlTab } from "./components/ControlCenter";
 import { NewThread } from "./components/NewThread";
 import { QueueList } from "./components/QueueList";
+import { ReviewAccessDialog, type ReviewAccessDecision } from "./components/ReviewAccessDialog";
 import { Sidebar } from "./components/Sidebar";
 import { Thread } from "./components/Thread";
 
 type Catalog = { claude: AgentStatusInfo; codex: AgentStatusInfo } | null;
+type ReviewGate = { agent: ThreadT["agent"]["agent"] };
 
 function loadRecentDirs(): string[] {
   try {
@@ -80,6 +82,8 @@ export function App() {
   const [threadAgentDraft, setThreadAgentDraft] = useState<AgentSelection | null>(null);
   const [controlTab, setControlTab] = useState<ControlTab | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [reviewGate, setReviewGate] = useState<ReviewGate | null>(null);
+  const reviewGateResolver = useRef<((decision: ReviewAccessDecision) => void) | null>(null);
 
   const selected = useMemo(() => threads.find((t) => t.id === selectedId) ?? null, [threads, selectedId]);
   const selectedProject = useMemo(() => selected ? projects.find((project) => project.id === selected.projectId) ?? null : null, [projects, selected]);
@@ -233,6 +237,21 @@ export function App() {
       localStorage.setItem("stereo:recent-dirs", JSON.stringify(next));
       return next;
     });
+  }, []);
+
+  const requestReviewAccess = useCallback((thread: ThreadT): Promise<ReviewAccessDecision> => {
+    return new Promise((resolve) => {
+      reviewGateResolver.current = resolve;
+      setReviewGate({ agent: thread.agent.agent });
+    });
+  }, []);
+
+  const resolveReviewAccess = useCallback((decision: ReviewAccessDecision) => {
+    const resolve = reviewGateResolver.current;
+    reviewGateResolver.current = null;
+    setReviewGate(null);
+    resolve?.(decision);
+    focusComposerAfterRender();
   }, []);
 
   useEffect(() => {
@@ -501,7 +520,7 @@ export function App() {
     { id: "project", label: "Project settings", detail: "Defaults and configuration files", group: "Project", disabled: !selected, run: () => setControlTab("project") },
     { id: "diagnostics", label: "Session diagnostics", detail: "Recovery state and native CLI escape hatch", group: "Harness", disabled: !selected, run: () => setControlTab("session") },
     { id: "fork", label: "Fork conversation", detail: "Continue with another harness", group: "Conversation", disabled: !selected || selected.status === "running", run: () => openMenu("fork") },
-    { id: "review", label: "Review working tree", detail: "Ask the other harness for a read-only second opinion", group: "Conversation", disabled: !selected || selected.status === "running", run: () => openMenu("review") },
+    { id: "review", label: "Review working tree", detail: "Choose Claude or Codex for a read-only review", group: "Conversation", disabled: !selected || selected.status === "running", run: () => openMenu("review") },
     { id: "folder", label: "Open working folder", detail: selected?.cwd ?? "No active project", group: "Project", disabled: !selected, run: () => { if (selected) void openDirectory(selected); } },
     { id: "archive", label: selected?.archivedAt ? "Restore thread" : "Archive thread", detail: selected?.archivedAt ? "Return this conversation to its project" : "Hide this conversation without deleting it", group: "Conversation", disabled: !selected || (!selected.archivedAt && selected.status === "running"), run: () => { if (selected) void archiveThread(selected, !selected.archivedAt); } },
   ];
@@ -543,6 +562,7 @@ export function App() {
                 {selectedProject?.name ?? shortPath(selected.cwd)}
               </button>
               <span className="header-meta model" title={agentSummary(selected.agent)}>{agentSummary(selected.agent)}</span>
+              {selected.kind === "review" && selected.permission === "read-only" && <span className="review-state">Review · Read only</span>}
               <span className="header-meta usage">{formatTokens(selected.usage.inputTokens + selected.usage.outputTokens)} tokens</span>
               <span className="spacer" />
               {stats &&
@@ -657,7 +677,7 @@ export function App() {
                       <div className="action-menu-title">
                         {menu === "fork"
                           ? "Duplicate this thread — full context handoff to any model"
-                          : "Second opinion on the uncommitted diff"}
+                          : "Review uncommitted work with any model"}
                       </div>
                       <AgentPicker value={menuAgent} onChange={setMenuAgent} agents={agents} />
                       <button className="btn primary" onClick={() => void confirmMenu()}>
@@ -697,11 +717,22 @@ export function App() {
                 <Composer
                   key={selected.id}
                   draftKey={`thread:${selected.id}`}
-                  placeholder={`Message ${AGENT_NAME[selected.agent.agent]}…`}
+                  placeholder={selected.kind === "review" && selected.permission === "read-only"
+                    ? `Ask ${AGENT_NAME[selected.agent.agent]} about the review or request fixes…`
+                    : `Message ${AGENT_NAME[selected.agent.agent]}…`}
                   running={selected.status === "running"}
+                  hint={selected.kind === "review" && selected.permission === "read-only"
+                    ? "Review is read-only · Sending a message lets you enable changes"
+                    : undefined}
                   onSubmit={async (text, attachments) => {
                     try {
-                      await stereo.sendMessage(selected.id, text, attachments);
+                      const threadId = selected.id;
+                      if (selected.kind === "review" && selected.permission === "read-only") {
+                        const decision = await requestReviewAccess(selected);
+                        if (decision === "cancel") return false;
+                        if (decision === "write") await stereo.promoteReview(threadId);
+                      }
+                      await stereo.sendMessage(threadId, text, attachments);
                       return true;
                     } catch (error) {
                       setAppError(error instanceof Error ? error.message : String(error));
@@ -740,6 +771,7 @@ export function App() {
         )}
         {controlTab && settings && <ControlCenter thread={selected} agents={agents} settings={settings} initialTab={controlTab} onSettingsChange={settingsChange} onClose={() => { setControlTab(null); void stereo.listProjects().then(setProjects); focusComposerAfterRender(); }} onError={setAppError} />}
         {paletteOpen && <CommandPalette commands={paletteCommands} onClose={() => { setPaletteOpen(false); focusComposerAfterRender(); }} />}
+        {reviewGate && <ReviewAccessDialog agent={reviewGate.agent} onDecision={resolveReviewAccess} />}
       </div>
     </div>
   );
