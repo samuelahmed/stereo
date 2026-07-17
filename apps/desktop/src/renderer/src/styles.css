@@ -12,6 +12,8 @@
   --claude-dim: rgba(196, 179, 250, 0.14);
   --codex: #7cc0f5;
   --codex-dim: rgba(124, 192, 245, 0.13);
+  --claude-character: #d97757;
+  --codex-character: #7cc0f5;
   --stereo-blue: #3b78d8;
   --stereo-blue-dark: #2f68c2;
   --stereo-cream: #fffaf1;
@@ -1798,6 +1800,12 @@ button.chip:hover {
   gap: 8px;
 }
 
+.status-banner .status-character {
+  width: 24px;
+  height: 24px;
+  margin: -5px -3px -5px -4px;
+}
+
 @media (max-width: 760px) {
   .conversation {
     padding: 24px 22px 44px;
@@ -1805,32 +1813,6 @@ button.chip:hover {
 
   .user-message {
     max-width: 88%;
-  }
-}
-
-.pulse-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  animation: pulse 1.4s ease-in-out infinite;
-}
-
-.pulse-dot.claude {
-  background: var(--claude);
-}
-
-.pulse-dot.codex {
-  background: var(--codex);
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.25;
   }
 }
 

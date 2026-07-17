@@ -4,14 +4,16 @@ export type StereoBrandMotion = "none" | "idle" | "working" | "wink";
 
 interface Props {
   motion: StereoBrandMotion;
+  color?: string;
+  className?: string;
 }
 
-export function StereoBrandCharacter({ motion }: Props) {
+export function StereoBrandCharacter({ motion, color = "var(--stereo-blue)", className = "" }: Props) {
   const maskId = `stereo-brand-${useId().replace(/:/g, "")}`;
 
   return (
     <svg
-      className={`stereo-brand-character motion-${motion}`}
+      className={`stereo-brand-character motion-${motion} ${className}`}
       viewBox="0 0 80 80"
       shapeRendering="crispEdges"
       aria-hidden="true"
@@ -38,7 +40,7 @@ export function StereoBrandCharacter({ motion }: Props) {
           </g>
         </mask>
       </defs>
-      <rect width="80" height="80" fill="var(--stereo-blue)" mask={`url(#${maskId})`} />
+      <rect width="80" height="80" fill={color} mask={`url(#${maskId})`} />
     </svg>
   );
 }

@@ -3,6 +3,7 @@ import type { AgentId, AssistantArtifact, EventEnvelope, Thread as ThreadT } fro
 import { AGENT_NAME, formatTokens } from "../labels";
 import { Markdown } from "./Markdown";
 import { AttachmentPreview } from "./AttachmentPreview";
+import { StereoBrandCharacter } from "./StereoBrandCharacter";
 
 interface Props {
   thread: ThreadT;
@@ -243,7 +244,11 @@ export function Thread({ thread, events, live, onOpenLink, onResolvePermission }
         )}
         {thread.status === "running" && live.length === 0 && (
           <div className="status-banner">
-            <span className={`pulse-dot ${thread.agent.agent}`} />
+            <StereoBrandCharacter
+              motion="working"
+              className="status-character"
+              color={thread.agent.agent === "claude" ? "var(--claude-character)" : "var(--codex-character)"}
+            />
             {AGENT_NAME[thread.agent.agent]} is working…
           </div>
         )}
