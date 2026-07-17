@@ -25,6 +25,164 @@ interface Props {
 type ThreadAction = { kind: "rename" | "delete"; thread: Thread } | null;
 type ContextMenu = { thread: Thread; x: number; y: number } | null;
 
+const SWIPE_LIMIT = 92;
+const SWIPE_ARCHIVE_THRESHOLD = 48;
+
+interface SwipeableThreadRowProps {
+  thread: Thread;
+  selected: boolean;
+  unread: boolean;
+  onSelect(): void;
+  onArchive(): Promise<void>;
+  onContextMenu(x: number, y: number): void;
+  onMore(x: number, y: number): void;
+}
+
+function SwipeableThreadRow({
+  thread,
+  selected,
+  unread,
+  onSelect,
+  onArchive,
+  onContextMenu,
+  onMore,
+}: SwipeableThreadRowProps) {
+  const [offset, setOffsetState] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const offsetRef = useRef(0);
+  const pendingRef = useRef(false);
+  const suppressClickRef = useRef(false);
+  const suppressClickTimerRef = useRef<number | null>(null);
+  const wheelTimerRef = useRef<number | null>(null);
+  const pointerRef = useRef<{
+    id: number;
+    startX: number;
+    startY: number;
+    startOffset: number;
+    axis: "horizontal" | "vertical" | null;
+  } | null>(null);
+
+  const setOffset = (next: number) => {
+    const clamped = Math.max(-SWIPE_LIMIT, Math.min(0, next));
+    offsetRef.current = clamped;
+    setOffsetState(clamped);
+  };
+
+  const archive = () => {
+    if (pendingRef.current || thread.status === "running") {
+      setOffset(0);
+      return;
+    }
+    pendingRef.current = true;
+    setDragging(false);
+    setOffset(-SWIPE_LIMIT);
+    void onArchive().finally(() => {
+      pendingRef.current = false;
+      setOffset(0);
+    });
+  };
+
+  const finishSwipe = () => {
+    setDragging(false);
+    if (offsetRef.current <= -SWIPE_ARCHIVE_THRESHOLD) archive();
+    else setOffset(0);
+  };
+
+  useEffect(() => () => {
+    if (wheelTimerRef.current !== null) window.clearTimeout(wheelTimerRef.current);
+    if (suppressClickTimerRef.current !== null) window.clearTimeout(suppressClickTimerRef.current);
+  }, []);
+
+  return (
+    <div className={`thread-swipe-shell ${thread.status === "running" ? "swipe-disabled" : ""}`}>
+      <div className="thread-swipe-action" aria-hidden="true">
+        <span>Archive</span>
+      </div>
+      <div
+        className={`thread-item ${selected ? "selected" : ""} ${dragging ? "swiping" : ""}`}
+        style={{ transform: `translateX(${offset}px)` }}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          onContextMenu(event.clientX, event.clientY);
+        }}
+        onPointerDown={(event) => {
+          if (thread.status === "running" || !event.isPrimary || event.button !== 0) return;
+          pointerRef.current = {
+            id: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            startOffset: offsetRef.current,
+            axis: null,
+          };
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          const gesture = pointerRef.current;
+          if (!gesture || gesture.id !== event.pointerId) return;
+          const deltaX = event.clientX - gesture.startX;
+          const deltaY = event.clientY - gesture.startY;
+          if (!gesture.axis && Math.max(Math.abs(deltaX), Math.abs(deltaY)) >= 5) {
+            gesture.axis = Math.abs(deltaX) > Math.abs(deltaY) ? "horizontal" : "vertical";
+            if (gesture.axis === "horizontal") setDragging(true);
+          }
+          if (gesture.axis !== "horizontal") return;
+          event.preventDefault();
+          setOffset(gesture.startOffset + deltaX);
+        }}
+        onPointerUp={(event) => {
+          const gesture = pointerRef.current;
+          if (!gesture || gesture.id !== event.pointerId) return;
+          pointerRef.current = null;
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+          if (gesture.axis === "horizontal") {
+            suppressClickRef.current = true;
+            suppressClickTimerRef.current = window.setTimeout(() => {
+              suppressClickRef.current = false;
+              suppressClickTimerRef.current = null;
+            }, 250);
+            finishSwipe();
+          }
+        }}
+        onPointerCancel={() => {
+          pointerRef.current = null;
+          setDragging(false);
+          setOffset(0);
+        }}
+        onWheel={(event) => {
+          if (thread.status === "running" || Math.abs(event.deltaX) < 1 || Math.abs(event.deltaX) <= Math.abs(event.deltaY) * 1.2) return;
+          event.preventDefault();
+          event.stopPropagation();
+          setDragging(true);
+          setOffset(offsetRef.current - event.deltaX);
+          if (wheelTimerRef.current !== null) window.clearTimeout(wheelTimerRef.current);
+          wheelTimerRef.current = window.setTimeout(() => {
+            wheelTimerRef.current = null;
+            finishSwipe();
+          }, 140);
+        }}
+        onClickCapture={(event) => {
+          if (!suppressClickRef.current) return;
+          suppressClickRef.current = false;
+          if (suppressClickTimerRef.current !== null) window.clearTimeout(suppressClickTimerRef.current);
+          suppressClickTimerRef.current = null;
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+      >
+        <button className="thread-item-main" onClick={onSelect} title={thread.title}>
+          <span className="thread-title"><span className={`status-dot ${thread.agent.agent} ${thread.status === "running" ? "pulse" : ""}`} /><span>{thread.title}</span>{unread && <span className="unread-dot" title="Unread completion" />}</span>
+          <span className="meta">{thread.kind === "review" && <span className="kind-badge">review</span>}<span>{AGENT_NAME[thread.agent.agent]}</span><span className="dim right">{timeAgo(thread.updatedAt)}</span></span>
+        </button>
+        <button className="thread-more" aria-label={`Actions for ${thread.title}`} title="Thread actions" onClick={(event) => {
+          event.stopPropagation();
+          const rect = event.currentTarget.getBoundingClientRect();
+          onMore(rect.right - 180, rect.bottom + 4);
+        }}>•••</button>
+      </div>
+    </div>
+  );
+}
+
 function loadCollapsedProjects(): Set<string> {
   try {
     return new Set(JSON.parse(localStorage.getItem("stereo:collapsed-projects") ?? "[]") as string[]);
@@ -255,13 +413,16 @@ export function Sidebar({
               <button className="project-more" aria-label={`Settings for ${project.name}`} title="Project settings" onClick={() => onProjectSettings(project.id)}>•••</button>
             </div>
             {(!collapsedProjects.has(project.id) || query.trim()) && projectThreads.map((thread) => (
-              <div key={thread.id} className={`thread-item ${thread.id === selectedId ? "selected" : ""}`} onContextMenu={(event) => { event.preventDefault(); setContextMenu({ thread, x: event.clientX, y: event.clientY }); }}>
-                <button className="thread-item-main" onClick={() => onSelect(thread.id)} title={thread.title}>
-                  <span className="thread-title"><span className={`status-dot ${thread.agent.agent} ${thread.status === "running" ? "pulse" : ""}`} /><span>{thread.title}</span>{unreadIds.has(thread.id) && <span className="unread-dot" title="Unread completion" />}</span>
-                  <span className="meta">{thread.kind === "review" && <span className="kind-badge">review</span>}<span>{AGENT_NAME[thread.agent.agent]}</span><span className="dim right">{timeAgo(thread.updatedAt)}</span></span>
-                </button>
-                <button className="thread-more" aria-label={`Actions for ${thread.title}`} title="Thread actions" onClick={(event) => { event.stopPropagation(); const rect = event.currentTarget.getBoundingClientRect(); setContextMenu({ thread, x: rect.right - 180, y: rect.bottom + 4 }); }}>•••</button>
-              </div>
+              <SwipeableThreadRow
+                key={thread.id}
+                thread={thread}
+                selected={thread.id === selectedId}
+                unread={unreadIds.has(thread.id)}
+                onSelect={() => onSelect(thread.id)}
+                onArchive={() => onArchive(thread, true)}
+                onContextMenu={(x, y) => setContextMenu({ thread, x, y })}
+                onMore={(x, y) => setContextMenu({ thread, x, y })}
+              />
             ))}
           </section>
         ))}
