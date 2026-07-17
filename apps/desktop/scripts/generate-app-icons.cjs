@@ -1,10 +1,8 @@
-const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const zlib = require("node:zlib");
 
 const resourcesDir = path.resolve(__dirname, "../resources");
-const iconsetPath = path.join(resourcesDir, "icon.iconset");
 const CREAM = [255, 250, 241];
 const BLUE = [59, 120, 216];
 const INK = [36, 33, 42];
@@ -38,9 +36,9 @@ function characterColor(x, y) {
   const leftPupil = inRect(u, v, 22, 37, 28, 43);
   const rightPupil = inRect(u, v, 54, 37, 60, 43);
   const smile =
-    inRect(u, v, 32, 47.5, 36, 49.5) ||
-    inRect(u, v, 36, 49.5, 44, 51) ||
-    inRect(u, v, 44, 47.5, 48, 49.5);
+    inRect(u, v, 32, 46.5, 36, 48.5) ||
+    inRect(u, v, 36, 48.5, 44, 50) ||
+    inRect(u, v, 44, 46.5, 48, 48.5);
 
   if (((leftEye || rightEye) && !leftPupil && !rightPupil) || smile) return CREAM;
   return BLUE;
@@ -48,7 +46,7 @@ function characterColor(x, y) {
 
 function sample(x, y) {
   const shadowDistance = roundedRectDistance(x, y, 512, 524, 432, 432, 210);
-  const shadowAlpha = Math.max(0, Math.min(0.16, 0.16 * Math.exp(-Math.max(shadowDistance, 0) ** 2 / (2 * 25 ** 2))));
+  const shadowAlpha = Math.max(0, Math.min(0.16, 0.16 * Math.exp(-(Math.max(shadowDistance, 0) ** 2) / (2 * 25 ** 2))));
   let color = [9, 9, 11];
   let alpha = shadowAlpha;
 
@@ -140,26 +138,34 @@ function encodePng(width, height, pixels) {
   ]);
 }
 
-const iconFiles = [
-  ["icon_16x16.png", 16],
-  ["icon_16x16@2x.png", 32],
-  ["icon_32x32.png", 32],
-  ["icon_32x32@2x.png", 64],
-  ["icon_128x128.png", 128],
-  ["icon_128x128@2x.png", 256],
-  ["icon_256x256.png", 256],
-  ["icon_256x256@2x.png", 512],
-  ["icon_512x512.png", 512],
-  ["icon_512x512@2x.png", 1024],
-];
+function encodeIcns(entries) {
+  const chunks = entries.map(([type, data]) => {
+    const result = Buffer.alloc(data.length + 8);
+    result.write(type, 0, 4, "ascii");
+    result.writeUInt32BE(result.length, 4);
+    data.copy(result, 8);
+    return result;
+  });
+  const body = Buffer.concat(chunks);
+  const header = Buffer.alloc(8);
+  header.write("icns", 0, 4, "ascii");
+  header.writeUInt32BE(body.length + 8, 4);
+  return Buffer.concat([header, body]);
+}
 
 fs.mkdirSync(resourcesDir, { recursive: true });
-fs.writeFileSync(path.join(resourcesDir, "icon.png"), render(1024));
-if (process.platform === "darwin") {
-  fs.rmSync(iconsetPath, { recursive: true, force: true });
-  fs.mkdirSync(iconsetPath, { recursive: true });
-  for (const [name, size] of iconFiles) fs.writeFileSync(path.join(iconsetPath, name), render(size));
-  execFileSync("iconutil", ["-c", "icns", iconsetPath, "-o", path.join(resourcesDir, "icon.icns")]);
-  fs.rmSync(iconsetPath, { recursive: true, force: true });
-}
+const images = new Map([16, 32, 64, 128, 256, 512, 1024].map((size) => [size, render(size)]));
+fs.writeFileSync(path.join(resourcesDir, "icon.png"), images.get(1024));
+fs.writeFileSync(path.join(resourcesDir, "icon.icns"), encodeIcns([
+  ["icp4", images.get(16)],
+  ["ic11", images.get(32)],
+  ["icp5", images.get(32)],
+  ["ic12", images.get(64)],
+  ["ic07", images.get(128)],
+  ["ic13", images.get(256)],
+  ["ic08", images.get(256)],
+  ["ic14", images.get(512)],
+  ["ic09", images.get(512)],
+  ["ic10", images.get(1024)],
+]));
 console.log("Generated Stereo app icons.");

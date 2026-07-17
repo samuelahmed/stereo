@@ -7,10 +7,23 @@
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev --watch",
-    "stereo": "electron-vite build && electron-vite preview",
+    "stereo": "electron-vite build && node scripts/run-stereo.cjs",
     "icons": "node scripts/generate-app-icons.cjs",
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json"
+  },
+  "build": {
+    "appId": "app.stereo.desktop",
+    "productName": "Stereo",
+    "mac": {
+      "icon": "resources/icon.icns"
+    },
+    "extraResources": [
+      {
+        "from": "resources/icon.png",
+        "to": "icon.png"
+      }
+    ]
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "latest",
