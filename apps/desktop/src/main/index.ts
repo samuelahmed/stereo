@@ -107,7 +107,6 @@ function playReadySound(readySound: ReadySound): void {
 
 function showNotice(title: string, body: string, threadId?: string, force = false): void {
   const settings = loadSettings();
-  if (!force && win && !win.isDestroyed() && win.isFocused()) return;
   const thread = threadId ? engine.listThreads().find((candidate) => candidate.id === threadId) : null;
   const readySound = thread?.readySound ?? settings.readySound;
   if (!settings.notifyOnComplete && readySound === "off") return;
@@ -115,6 +114,11 @@ function showNotice(title: string, body: string, threadId?: string, force = fals
   // A local beep is deliberately separate from Notification Center. It works
   // in unsigned development builds and needs no notification permission.
   playReadySound(readySound);
+
+  // Sound is an explicit completion preference and should work even while the
+  // Stereo window is focused. Only OS notifications and window flashing are
+  // suppressed when the result is already visible in the foreground.
+  if (!force && win && !win.isDestroyed() && win.isFocused()) return;
 
   if (settings.notifyOnComplete && Notification.isSupported()) {
     const notification = new Notification({ title, body, silent: true });
