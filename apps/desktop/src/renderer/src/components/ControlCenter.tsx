@@ -20,6 +20,7 @@ export function ControlCenter({ thread, agents, settings, initialTab = "app", on
   const [tab, setTab] = useState<ControlTab>(initialTab);
   const [inspection, setInspection] = useState<ProjectInspection | null>(null);
   const [copied, setCopied] = useState(false);
+  const [notificationTested, setNotificationTested] = useState(false);
 
   const refresh = () => {
     if (!thread) {
@@ -98,9 +99,23 @@ export function ControlCenter({ thread, agents, settings, initialTab = "app", on
                   </select>
                 </label>
                 <label className="settings-row">
-                  <div><strong>Completion notifications</strong><span>Notify when background work finishes.</span></div>
+                  <div><strong>Background notifications</strong><span>Show a system alert when work finishes, fails, or needs approval.</span></div>
                   <input type="checkbox" checked={settings.notifyOnComplete} onChange={(event) => onSettingsChange({ ...settings, notifyOnComplete: event.target.checked })} />
                 </label>
+                <label className="settings-row">
+                  <div><strong>Ready sound</strong><span>Play a local sound when Stereo needs you. No system permission required.</span></div>
+                  <input type="checkbox" checked={settings.soundOnComplete} onChange={(event) => onSettingsChange({ ...settings, soundOnComplete: event.target.checked })} />
+                </label>
+                {(settings.notifyOnComplete || settings.soundOnComplete) && (
+                  <div className="settings-row notification-test">
+                    <div><strong>Try it</strong><span>macOS may ask once before Stereo can show system notifications.</span></div>
+                    <button className="btn" onClick={() => void run(async () => {
+                      await stereo.testNotifications();
+                      setNotificationTested(true);
+                      window.setTimeout(() => setNotificationTested(false), 1800);
+                    })}>{notificationTested ? "Sent" : "Send test"}</button>
+                  </div>
+                )}
               </div>
             </>
           )}

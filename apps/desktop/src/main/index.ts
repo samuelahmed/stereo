@@ -24,6 +24,7 @@ const DEFAULT_SETTINGS: Settings = {
   defaultPermission: "workspace-write",
   editor: "auto",
   notifyOnComplete: false,
+  soundOnComplete: false,
 };
 
 const EDITOR_PREFERENCES = new Set<EditorPreference>(["auto", "vscode", "cursor", "zed", "system"]);
@@ -36,6 +37,7 @@ function normalizeSettings(saved: Partial<Settings>): Settings {
     editor: EDITOR_PREFERENCES.has(merged.editor) ? merged.editor : "auto",
     defaultPermission: defaultAgent.agent === "codex" && merged.defaultPermission === "ask" ? "workspace-write" : merged.defaultPermission,
     notifyOnComplete: Boolean(merged.notifyOnComplete),
+    soundOnComplete: Boolean(merged.soundOnComplete),
   };
 }
 
@@ -58,6 +60,68 @@ function saveSettings(settings: Settings): void {
 
 let engine: Engine;
 let win: BrowserWindow | null = null;
+let pendingRevealThreadId: string | null = null;
+const liveNotifications = new Set<Notification>();
+
+function sendToRenderer(channel: string, payload: unknown): void {
+  if (!win || win.isDestroyed()) return;
+  win.webContents.send(channel, payload);
+}
+
+function revealThread(threadId: string): void {
+  pendingRevealThreadId = threadId;
+  if (!win || win.isDestroyed()) {
+    createWindow();
+    return;
+  }
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+  if (!win.webContents.isLoadingMainFrame()) {
+    sendToRenderer("stereo:reveal-thread", threadId);
+    pendingRevealThreadId = null;
+  }
+}
+
+function showNotice(title: string, body: string, threadId?: string, force = false): void {
+  const settings = loadSettings();
+  if (!force && win && !win.isDestroyed() && win.isFocused()) return;
+  if (!settings.notifyOnComplete && !settings.soundOnComplete) return;
+
+  // A local beep is deliberately separate from Notification Center. It works
+  // in unsigned development builds and needs no macOS privacy permission.
+  if (settings.soundOnComplete) shell.beep();
+
+  if (settings.notifyOnComplete && Notification.isSupported()) {
+    const notification = new Notification({ title, body, silent: true });
+    liveNotifications.add(notification);
+    const release = () => liveNotifications.delete(notification);
+    notification.once("close", release);
+    notification.once("failed", release);
+    if (threadId) notification.on("click", () => revealThread(threadId));
+    notification.show();
+  }
+
+  if (!force && process.platform === "darwin") app.dock?.bounce("informational");
+}
+
+function noticeFor(envelope: EventEnvelope): { title: string; body: string } | null {
+  const thread = engine.listThreads().find((candidate) => candidate.id === envelope.threadId);
+  if (!thread) return null;
+  const agent = thread.agent.agent === "codex" ? "Codex" : "Claude";
+  switch (envelope.event.type) {
+    case "turn-end":
+      // A turn ending is not completion when another user message is queued.
+      if (engine.queuedFor(envelope.threadId).length > 0) return null;
+      return { title: thread.title, body: `${agent} finished — ready for your review` };
+    case "permission-request":
+      return { title: `${thread.title} needs you`, body: `${agent} is waiting for approval to continue` };
+    case "error":
+      return { title: `${thread.title} stopped`, body: `${agent} hit an error and needs your attention` };
+    default:
+      return null;
+  }
+}
 
 // The renderer may only preview files the user attached or files the engine
 // imported into managed assistant-artifact storage. This keeps "file:preview"
@@ -75,7 +139,7 @@ function approveArtifact(artifact: AssistantArtifact | undefined): void {
 }
 
 function createWindow(): void {
-  win = new BrowserWindow({
+  const browserWindow = new BrowserWindow({
     width: 1240,
     height: 820,
     minWidth: 880,
@@ -92,20 +156,28 @@ function createWindow(): void {
       sandbox: false,
     },
   });
+  win = browserWindow;
 
-  win.webContents.on("did-finish-load", () => {
-    void win?.webContents
+  browserWindow.webContents.on("did-finish-load", () => {
+    void browserWindow.webContents
       .executeJavaScript("typeof window.stereo")
       .then((t: string) => console.log(`[stereo] engine bridge in renderer: ${t}`));
+    if (pendingRevealThreadId) {
+      browserWindow.webContents.send("stereo:reveal-thread", pendingRevealThreadId);
+      pendingRevealThreadId = null;
+    }
+  });
+  browserWindow.on("closed", () => {
+    if (win === browserWindow) win = null;
   });
 
   // The shell=stereo marker lets the renderer distinguish "running inside the
   // real app with a broken bridge" (hard error) from "running in a plain
   // browser" (design mock). Only this process can set it.
   if (process.env.ELECTRON_RENDERER_URL) {
-    void win.loadURL(`${process.env.ELECTRON_RENDERER_URL}?shell=stereo`);
+    void browserWindow.loadURL(`${process.env.ELECTRON_RENDERER_URL}?shell=stereo`);
   } else {
-    void win.loadFile(path.join(import.meta.dirname, "../renderer/index.html"), { query: { shell: "stereo" } });
+    void browserWindow.loadFile(path.join(import.meta.dirname, "../renderer/index.html"), { query: { shell: "stereo" } });
   }
 }
 
@@ -114,20 +186,13 @@ void app.whenReady().then(() => {
   engine = new Engine(settings, path.join(app.getPath("userData"), "data"));
   engine.on("event", (envelope: EventEnvelope) => {
     if (envelope.event.type === "assistant-artifact") approveArtifact(envelope.event.artifact);
-    win?.webContents.send("stereo:event", envelope);
-    if (envelope.event.type === "turn-end" && loadSettings().notifyOnComplete && !win?.isFocused() && Notification.isSupported()) {
-      const thread = engine.listThreads().find((candidate) => candidate.id === envelope.threadId);
-      const notification = new Notification({ title: thread?.title ?? "Stereo", body: `${thread?.agent.agent === "codex" ? "Codex" : "Claude"} finished working` });
-      notification.on("click", () => {
-        win?.show();
-        win?.focus();
-      });
-      notification.show();
-    }
+    sendToRenderer("stereo:event", envelope);
+    const notice = noticeFor(envelope);
+    if (notice) showNotice(notice.title, notice.body, envelope.threadId);
   });
-  engine.on("delta", (delta: { threadId: string; text: string }) => win?.webContents.send("stereo:delta", delta));
-  engine.on("threads", (threads: Thread[]) => win?.webContents.send("stereo:threads", threads));
-  engine.on("queue", (payload: { threadId: string; queue: QueuedMessage[] }) => win?.webContents.send("stereo:queue", payload));
+  engine.on("delta", (delta: { threadId: string; text: string }) => sendToRenderer("stereo:delta", delta));
+  engine.on("threads", (threads: Thread[]) => sendToRenderer("stereo:threads", threads));
+  engine.on("queue", (payload: { threadId: string; queue: QueuedMessage[] }) => sendToRenderer("stereo:queue", payload));
 
   ipcMain.handle("settings:get", () => loadSettings());
   ipcMain.handle("settings:set", (_e, next: Settings) => {
@@ -135,6 +200,11 @@ void app.whenReady().then(() => {
     saveSettings(settings);
     engine.updateSettings(settings);
     return settings;
+  });
+  ipcMain.handle("notifications:test", () => {
+    const settings = loadSettings();
+    if (!settings.notifyOnComplete && !settings.soundOnComplete) throw new Error("Turn on notifications or sound first");
+    showNotice("Stereo is ready", "You'll be notified when work is ready for you.", undefined, true);
   });
 
   ipcMain.handle("agents:detect", async () => {

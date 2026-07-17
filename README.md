@@ -18,6 +18,8 @@ tree in place, and streams everything the agent does.
 - **Pre-commit review** — one click runs the rival lab read-only over the current
   uncommitted diff, with any safety truncation shown in the review context.
 - **History forever** — every thread from both vendors, saved locally, browsable.
+- **Come back at the right moment** — optional native notifications and a local
+  sound when background work finishes, fails, or needs approval.
 - **Your workflow stays yours** — no worktrees, no generated commits, no merge UI.
   Git is the undo button, your editor is the review surface, commits come from you.
 

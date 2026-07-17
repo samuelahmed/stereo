@@ -23,6 +23,7 @@ export interface Settings {
   defaultPermission: PermissionMode;
   editor: EditorPreference;
   notifyOnComplete: boolean;
+  soundOnComplete: boolean;
 }
 
 /** A repository-scoped workspace shared by any number of threads. */

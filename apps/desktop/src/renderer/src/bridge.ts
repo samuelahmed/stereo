@@ -16,6 +16,7 @@ import { AGENT_MODELS, defaultAgentSelection } from "@stereo/core/models";
 export interface StereoApi {
   getSettings(): Promise<Settings>;
   setSettings(settings: Settings): Promise<Settings>;
+  testNotifications(): Promise<void>;
   detectAgents(): Promise<{ claude: AgentStatusInfo; codex: AgentStatusInfo }>;
   pickDir(): Promise<string | null>;
   openDir(directory: string): Promise<void>;
@@ -48,6 +49,7 @@ export interface StereoApi {
   onDelta(handler: (delta: { threadId: string; text: string }) => void): () => void;
   onThreads(handler: (threads: Thread[]) => void): () => void;
   onQueue(handler: (payload: { threadId: string; queue: QueuedMessage[] }) => void): () => void;
+  onRevealThread(handler: (threadId: string) => void): () => void;
 }
 
 declare global {
@@ -76,6 +78,7 @@ function createMock(): StereoApi {
     defaultPermission: "workspace-write",
     editor: "auto",
     notifyOnComplete: false,
+    soundOnComplete: false,
   };
   const threads = new Map<string, Thread>();
   const events = new Map<string, EventEnvelope[]>();
@@ -161,6 +164,7 @@ function createMock(): StereoApi {
       settings = next;
       return settings;
     },
+    testNotifications: async () => undefined,
     detectAgents: async () => ({
       claude: {
         agent: "claude",
@@ -308,6 +312,7 @@ function createMock(): StereoApi {
       return () => threadHandlers.delete(h);
     },
     onQueue: () => () => undefined,
+    onRevealThread: () => () => undefined,
   };
 }
 

@@ -723,6 +723,7 @@ button.new-thread:hover {
   color: var(--text-3);
   font: 10.5px/1.2 var(--mono);
   white-space: nowrap;
+  transform: translateY(1px);
 }
 
 .repo-state.clean {
@@ -1065,6 +1066,10 @@ button.new-thread:hover {
 
 .settings-row input[type="checkbox"] {
   accent-color: var(--stereo-blue);
+}
+
+.notification-test .btn {
+  flex-shrink: 0;
 }
 
 .settings-row.agent-setting {

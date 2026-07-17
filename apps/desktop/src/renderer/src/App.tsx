@@ -118,11 +118,21 @@ export function App() {
     const offQueue = stereo.onQueue(({ threadId, queue }) => {
       setQueueByThread((previous) => ({ ...previous, [threadId]: queue }));
     });
+    const offRevealThread = stereo.onRevealThread((threadId) => {
+      setSelectedId(threadId);
+      localStorage.setItem("stereo:selected-thread", threadId);
+      setUnreadIds((previous) => {
+        const next = new Set(previous);
+        next.delete(threadId);
+        return next;
+      });
+    });
     return () => {
       offThreads();
       offEvent();
       offDelta();
       offQueue();
+      offRevealThread();
     };
   }, []);
 

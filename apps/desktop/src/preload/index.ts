@@ -4,6 +4,7 @@ import type { AgentSelection, Attachment, EventEnvelope, Project, QueuedMessage,
 const api = {
   getSettings: () => ipcRenderer.invoke("settings:get"),
   setSettings: (settings: Settings): Promise<Settings> => ipcRenderer.invoke("settings:set", settings),
+  testNotifications: (): Promise<void> => ipcRenderer.invoke("notifications:test"),
   detectAgents: () => ipcRenderer.invoke("agents:detect"),
   pickDir: () => ipcRenderer.invoke("dir:pick"),
   openDir: (directory: string) => ipcRenderer.invoke("dir:open", directory),
@@ -58,6 +59,11 @@ const api = {
     const listener = (_e: unknown, payload: { threadId: string; queue: QueuedMessage[] }) => handler(payload);
     ipcRenderer.on("stereo:queue", listener);
     return () => ipcRenderer.removeListener("stereo:queue", listener);
+  },
+  onRevealThread: (handler: (threadId: string) => void) => {
+    const listener = (_e: unknown, threadId: string) => handler(threadId);
+    ipcRenderer.on("stereo:reveal-thread", listener);
+    return () => ipcRenderer.removeListener("stereo:reveal-thread", listener);
   },
 };
 
