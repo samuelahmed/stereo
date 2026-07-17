@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Project, Thread } from "@stereo/core";
-import { AGENT_NAME, timeAgo } from "../labels";
+import { AGENT_NAME } from "../labels";
 import { StereoBrandCharacter } from "./StereoBrandCharacter";
 
 interface Props {
@@ -111,7 +111,6 @@ function SwipeableThreadRow({
             startOffset: offsetRef.current,
             axis: null,
           };
-          event.currentTarget.setPointerCapture(event.pointerId);
         }}
         onPointerMove={(event) => {
           const gesture = pointerRef.current;
@@ -120,7 +119,10 @@ function SwipeableThreadRow({
           const deltaY = event.clientY - gesture.startY;
           if (!gesture.axis && Math.max(Math.abs(deltaX), Math.abs(deltaY)) >= 5) {
             gesture.axis = Math.abs(deltaX) > Math.abs(deltaY) ? "horizontal" : "vertical";
-            if (gesture.axis === "horizontal") setDragging(true);
+            if (gesture.axis === "horizontal") {
+              event.currentTarget.setPointerCapture(event.pointerId);
+              setDragging(true);
+            }
           }
           if (gesture.axis !== "horizontal") return;
           event.preventDefault();
@@ -158,6 +160,7 @@ function SwipeableThreadRow({
           }, 140);
         }}
         onClickCapture={(event) => {
+          if ((event.target as HTMLElement).closest(".thread-more")) return;
           if (!suppressClickRef.current) return;
           suppressClickRef.current = false;
           if (suppressClickTimerRef.current !== null) window.clearTimeout(suppressClickTimerRef.current);
@@ -166,15 +169,15 @@ function SwipeableThreadRow({
           event.stopPropagation();
         }}
       >
-        <button className="thread-item-main" onClick={onSelect} title={thread.title}>
+        <button className="thread-item-main" aria-current={selected ? "page" : undefined} onClick={onSelect} title={thread.title}>
           <span className="thread-title">
             {thread.status === "running" && <span className={`thread-running-dot ${thread.agent.agent}`} title={`${AGENT_NAME[thread.agent.agent]} is working`} />}
-            <span>{thread.title}</span>
+            <span className="thread-title-copy">{thread.title}</span>
             {unread && <span className="unread-dot" title="Unread completion" />}
           </span>
-          <span className="meta"><span>{AGENT_NAME[thread.agent.agent]}{thread.kind === "review" ? " · Review" : ""}</span><span className="dim right">{timeAgo(thread.updatedAt)}</span></span>
         </button>
-        <button className="thread-more" aria-label={`Actions for ${thread.title}`} title="Thread actions" onClick={(event) => {
+        <button className="thread-more" aria-label={`Actions for ${thread.title}`} title="Thread actions" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => {
+          event.preventDefault();
           event.stopPropagation();
           const rect = event.currentTarget.getBoundingClientRect();
           onMore(rect.right - 180, rect.bottom + 4);
@@ -223,7 +226,6 @@ export function Sidebar({
   const [title, setTitle] = useState("");
   const [pending, setPending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [, refreshRelativeTimes] = useState(0);
   const searchRef = useRef<HTMLInputElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
 
@@ -315,11 +317,6 @@ export function Sidebar({
   }, [onSelect]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => refreshRelativeTimes((value) => value + 1), 60_000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
     if (!action) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !pending) setAction(null);
@@ -376,7 +373,6 @@ export function Sidebar({
           <StereoBrandCharacter motion={brandMotion} />
           <span>stereo</span>
         </div>
-        <span className="shortcut-hint">⌘K</span>
       </div>
       <button className="new-thread" onClick={() => onSelect(null)}>
         <span>＋</span> New thread <span className="new-thread-shortcut">⌘N</span>
@@ -435,14 +431,12 @@ export function Sidebar({
               <small>{archivedThreads.length}</small>
             </button>
             {showArchived && filteredArchivedThreads.map((thread) => {
-              const projectName = projects.find((project) => project.id === thread.projectId)?.name;
               return (
                 <div key={thread.id} className={`thread-item archived ${thread.id === selectedId ? "selected" : ""}`} onContextMenu={(event) => { event.preventDefault(); setContextMenu({ thread, x: event.clientX, y: event.clientY }); }}>
                   <button className="thread-item-main" onClick={() => onSelect(thread.id)} title={thread.title}>
-                    <span className="thread-title"><span>{thread.title}</span></span>
-                    <span className="meta"><span>{projectName ?? AGENT_NAME[thread.agent.agent]}</span><span className="dim right">{timeAgo(thread.archivedAt ?? thread.updatedAt)}</span></span>
+                    <span className="thread-title"><span className="thread-title-copy">{thread.title}</span></span>
                   </button>
-                  <button className="thread-more" aria-label={`Actions for ${thread.title}`} title="Thread actions" onClick={(event) => { event.stopPropagation(); const rect = event.currentTarget.getBoundingClientRect(); setContextMenu({ thread, x: rect.right - 180, y: rect.bottom + 4 }); }}>•••</button>
+                  <button className="thread-more" aria-label={`Actions for ${thread.title}`} title="Thread actions" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.preventDefault(); event.stopPropagation(); const rect = event.currentTarget.getBoundingClientRect(); setContextMenu({ thread, x: rect.right - 180, y: rect.bottom + 4 }); }}>•••</button>
                 </div>
               );
             })}

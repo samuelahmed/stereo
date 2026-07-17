@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AgentSelection, AgentStatusInfo, Attachment, DiffStats, EventEnvelope, PermissionMode, Project, QueuedMessage, Settings, Thread as ThreadT } from "@stereo/core";
 import { defaultAgentSelection } from "@stereo/core/models";
 import { bridgeFailed, isMock, stereo } from "./bridge";
@@ -62,6 +62,8 @@ export function App() {
   const selectedIdRef = useRef<string | null>(null);
   selectedIdRef.current = selectedId;
   const initialProjectDefaultsApplied = useRef(false);
+  const loadedEventThreads = useRef(new Set<string>());
+  const loadingEventThreads = useRef(new Set<string>());
 
   useEffect(() => {
     void Promise.all([
@@ -217,16 +219,26 @@ export function App() {
   useEffect(() => {
     const id = selectedId;
     if (!id) return;
-    void stereo.threadEvents(id)
-      .then((history) => {
-        setEventsByThread((prev) => {
-          const seen = new Set((prev[id] ?? []).map((e) => e.seq));
-          const merged = [...(prev[id] ?? []), ...history.filter((e) => !seen.has(e.seq))];
-          merged.sort((a, b) => a.seq - b.seq);
-          return { ...prev, [id]: merged };
-        });
-      })
-      .catch((error) => setAppError(error instanceof Error ? error.message : String(error)));
+    if (!loadedEventThreads.current.has(id) && !loadingEventThreads.current.has(id)) {
+      loadingEventThreads.current.add(id);
+      void stereo.threadEvents(id)
+        .then((history) => {
+          // A large historical transcript is intentionally non-urgent: keep the
+          // sidebar and header responsive while React prepares the conversation.
+          startTransition(() => {
+            setEventsByThread((prev) => {
+              const current = prev[id] ?? [];
+              const seen = new Set(current.map((e) => e.seq));
+              const merged = [...current, ...history.filter((e) => !seen.has(e.seq))];
+              merged.sort((a, b) => a.seq - b.seq);
+              return { ...prev, [id]: merged };
+            });
+          });
+          loadedEventThreads.current.add(id);
+        })
+        .catch((error) => setAppError(error instanceof Error ? error.message : String(error)))
+        .finally(() => loadingEventThreads.current.delete(id));
+    }
     void stereo.threadStats(id)
       .then((stats) => setStatsByThread((prev) => ({ ...prev, [id]: stats })))
       .catch(() => undefined);
@@ -330,6 +342,8 @@ export function App() {
 
   const deleteThread = useCallback(async (thread: ThreadT) => {
     await stereo.deleteThread(thread.id);
+    loadedEventThreads.current.delete(thread.id);
+    loadingEventThreads.current.delete(thread.id);
     if (selectedId === thread.id) {
       selectThread(threads.find((candidate) => candidate.id !== thread.id && !candidate.archivedAt)?.id ?? null);
     }
@@ -343,6 +357,7 @@ export function App() {
   const openMenu = useCallback(
     (which: "fork" | "review") => {
       if (!selected) return;
+      setThreadAgentDraft(null);
       setMenuAgent(
         which === "review"
           ? defaultAgentSelection(otherAgent(selected.agent.agent))
@@ -459,72 +474,12 @@ export function App() {
         ) : selected ? (
           <>
             <div className="thread-header">
-              <div className="thread-identity">
-                <div className="title" title={selected.title}>{selected.title}</div>
-                <div className="thread-meta">
-                  <button className="thread-meta-control repo" title={`Open ${selected.cwd}`} onClick={() => void openDirectory(selected)}>
-                    {selectedProject?.name ?? shortPath(selected.cwd)}
-                  </button>
-                  <span className="meta-separator">·</span>
-                  <div className="agent-chip-wrap">
-                    <button
-                      className={`thread-meta-control agent-chip ${selected.agent.agent}`}
-                      title="Change model and thinking effort"
-                      onClick={() => {
-                        setMenu(null);
-                        setThreadAgentDraft((current) => current ? null : { ...selected.agent });
-                      }}
-                    >
-                      {agentSummary(selected.agent)}
-                    </button>
-                    {threadAgentDraft && (
-                      <>
-                        <div className="menu-dismiss" onClick={() => setThreadAgentDraft(null)} />
-                        <div className="action-menu model-menu" role="dialog" aria-label="Thread model settings">
-                          <div className="action-menu-title">Model for future turns in this thread</div>
-                          <AgentPicker
-                            value={threadAgentDraft}
-                            onChange={setThreadAgentDraft}
-                            agents={agents}
-                            allowAgentChange={false}
-                            disabled={selected.status === "running" || Boolean(selected.archivedAt) || (queueByThread[selected.id]?.length ?? 0) > 0}
-                          />
-                          {(selected.status === "running" || (queueByThread[selected.id]?.length ?? 0) > 0) && (
-                            <div className="model-menu-note">Finish the running and queued work before changing models.</div>
-                          )}
-                          {selected.archivedAt && <div className="model-menu-note">Restore this thread before changing models.</div>}
-                          <div className="model-menu-actions">
-                            <button className="btn ghost" onClick={() => setThreadAgentDraft(null)}>Cancel</button>
-                            <button
-                              className="btn primary"
-                              disabled={selected.status === "running" || Boolean(selected.archivedAt) || (queueByThread[selected.id]?.length ?? 0) > 0}
-                              onClick={() => void saveThreadAgent()}
-                            >
-                              Apply
-                            </button>
-                          </div>
-                          <div className="model-menu-note">To switch between Claude and Codex, fork the thread.</div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                  <span className="meta-separator">·</span>
-                  <select
-                    className="thread-meta-control permission-select"
-                    aria-label="Thread access"
-                    title="Access for future turns in this thread"
-                    disabled={Boolean(selected.archivedAt)}
-                    value={selected.permission}
-                    onChange={(event) => void stereo.setThreadPermission(selected.id, event.target.value as PermissionMode).catch((error) => setAppError(error instanceof Error ? error.message : String(error)))}
-                  >
-                    <option value="workspace-write">Write</option>
-                    {selected.agent.agent === "claude" && <option value="ask">Ask before writes</option>}
-                    <option value="read-only">Read only</option>
-                  </select>
-                  <span className="meta-separator usage-separator">·</span>
-                  <span className="header-usage">{formatTokens(selected.usage.inputTokens + selected.usage.outputTokens)} tokens</span>
-                </div>
-              </div>
+              <div className="title" title={selected.title}>{selected.title}</div>
+              <button className="header-meta repo" title={`Open ${selected.cwd}`} onClick={() => void openDirectory(selected)}>
+                {selectedProject?.name ?? shortPath(selected.cwd)}
+              </button>
+              <span className="header-meta model" title={agentSummary(selected.agent)}>{agentSummary(selected.agent)}</span>
+              <span className="header-meta usage">{formatTokens(selected.usage.inputTokens + selected.usage.outputTokens)} tokens</span>
               <span className="spacer" />
               {stats &&
                 (stats.filesChanged === 0 ? (
@@ -536,12 +491,79 @@ export function App() {
                   </span>
                 ))}
               <div className="header-actions">
+                <button
+                  className="header-action"
+                  aria-expanded={Boolean(threadAgentDraft)}
+                  onClick={() => {
+                    setMenu(null);
+                    setThreadAgentDraft((current) => current ? null : { ...selected.agent });
+                  }}
+                >
+                  Info
+                </button>
                 <button className="header-action" disabled={selected.status === "running"} onClick={() => openMenu("fork")}>
                   Fork
                 </button>
                 <button className={`header-action review ${stats && stats.filesChanged > 0 ? "has-changes" : ""}`} disabled={selected.status === "running"} onClick={() => openMenu("review")}>
                   Review
                 </button>
+                {threadAgentDraft && (
+                  <>
+                    <div className="menu-dismiss" onClick={() => setThreadAgentDraft(null)} />
+                    <div className="action-menu thread-info-menu" role="dialog" aria-label="Thread info">
+                      <div className="thread-info-heading">
+                        <strong>Thread info</strong>
+                        <span>Controls for future turns</span>
+                      </div>
+                      <div className="thread-info-row">
+                        <span>Folder</span>
+                        <button title={selected.cwd} onClick={() => void openDirectory(selected)}>{shortPath(selected.cwd)}</button>
+                      </div>
+                      <div className="thread-info-row">
+                        <label htmlFor="thread-access">Access</label>
+                        <select
+                          id="thread-access"
+                          disabled={Boolean(selected.archivedAt)}
+                          value={selected.permission}
+                          onChange={(event) => void stereo.setThreadPermission(selected.id, event.target.value as PermissionMode).catch((error) => setAppError(error instanceof Error ? error.message : String(error)))}
+                        >
+                          <option value="workspace-write">Write</option>
+                          {selected.agent.agent === "claude" && <option value="ask">Ask before writes</option>}
+                          <option value="read-only">Read only</option>
+                        </select>
+                      </div>
+                      <div className="thread-info-row usage-detail">
+                        <span>Usage</span>
+                        <span>{formatTokens(selected.usage.inputTokens)} in · {formatTokens(selected.usage.outputTokens)} out</span>
+                      </div>
+                      <div className="thread-info-section">
+                        <span>Model</span>
+                        <AgentPicker
+                          value={threadAgentDraft}
+                          onChange={setThreadAgentDraft}
+                          agents={agents}
+                          allowAgentChange={false}
+                          disabled={selected.status === "running" || Boolean(selected.archivedAt) || (queueByThread[selected.id]?.length ?? 0) > 0}
+                        />
+                      </div>
+                      {(selected.status === "running" || (queueByThread[selected.id]?.length ?? 0) > 0) && (
+                        <div className="model-menu-note">Finish the running and queued work before changing models.</div>
+                      )}
+                      {selected.archivedAt && <div className="model-menu-note">Restore this thread before changing its controls.</div>}
+                      <div className="model-menu-actions">
+                        <button className="btn ghost" onClick={() => setThreadAgentDraft(null)}>Close</button>
+                        <button
+                          className="btn primary"
+                          disabled={selected.status === "running" || Boolean(selected.archivedAt) || (queueByThread[selected.id]?.length ?? 0) > 0}
+                          onClick={() => void saveThreadAgent()}
+                        >
+                          Apply model
+                        </button>
+                      </div>
+                      <div className="model-menu-note">Fork the thread to switch between Claude and Codex.</div>
+                    </div>
+                  </>
+                )}
                 {menu && (
                   <>
                     <div className="menu-dismiss" onClick={() => setMenu(null)} />
@@ -561,6 +583,7 @@ export function App() {
               </div>
             </div>
             <Thread
+              key={selected.id}
               thread={selected}
               events={eventsByThread[selected.id] ?? []}
               live={liveByThread[selected.id] ?? ""}

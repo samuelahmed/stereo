@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AgentId, AssistantArtifact, EventEnvelope, Thread as ThreadT, ToolEventData } from "@stereo/core";
 import { AGENT_NAME, formatTokens } from "../labels";
 import { Markdown } from "./Markdown";
@@ -17,6 +17,8 @@ type TranscriptItem =
   | { type: "event"; envelope: EventEnvelope }
   | { type: "tools"; envelopes: EventEnvelope[] }
   | { type: "artifacts"; envelopes: EventEnvelope[] };
+
+const TRANSCRIPT_PAGE_SIZE = 160;
 
 /** Keep noisy tool runs compact and display adjacent artifacts as one gallery. */
 function groupEvents(events: EventEnvelope[]): TranscriptItem[] {
@@ -229,7 +231,11 @@ function EventRow({ envelope, agent, onOpenLink, resolvedPermissions, onResolveP
 export function Thread({ thread, events, live, onOpenLink, onResolvePermission }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
+  const prependHeight = useRef<number | null>(null);
+  const [visibleCount, setVisibleCount] = useState(TRANSCRIPT_PAGE_SIZE);
   const items = useMemo(() => groupEvents(events), [events]);
+  const hiddenCount = Math.max(0, items.length - visibleCount);
+  const visibleItems = hiddenCount > 0 ? items.slice(hiddenCount) : items;
   const resolvedPermissions = useMemo(() => {
     const states = new Map<string, PermissionState>();
     const pending = new Set<string>();
@@ -253,6 +259,19 @@ export function Thread({ thread, events, live, onOpenLink, onResolvePermission }
     if (el && stick.current) el.scrollTop = el.scrollHeight;
   }, [events.length, live]);
 
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!el || prependHeight.current === null) return;
+    el.scrollTop += el.scrollHeight - prependHeight.current;
+    prependHeight.current = null;
+  }, [visibleCount]);
+
+  const showEarlier = () => {
+    const el = scroller.current;
+    if (el) prependHeight.current = el.scrollHeight;
+    setVisibleCount((count) => Math.min(items.length, count + TRANSCRIPT_PAGE_SIZE));
+  };
+
   return (
     <div
       className="thread"
@@ -263,7 +282,12 @@ export function Thread({ thread, events, live, onOpenLink, onResolvePermission }
       }}
     >
       <div className="conversation">
-        {items.map((item) =>
+        {hiddenCount > 0 && (
+          <button className="load-earlier" type="button" onClick={showEarlier}>
+            Show earlier activity <span>{hiddenCount.toLocaleString()} hidden</span>
+          </button>
+        )}
+        {visibleItems.map((item) =>
           item.type === "tools" ? (
             <ToolGroup key={`tools-${item.envelopes[0]?.seq}`} envelopes={item.envelopes} agent={thread.agent.agent} />
           ) : item.type === "artifacts" ? (
