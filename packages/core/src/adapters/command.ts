@@ -87,18 +87,57 @@ function executable(command: string, env: NodeJS.ProcessEnv): string {
   return command;
 }
 
+// cmd.exe metacharacters, per Rob van der Woude's list — the same set
+// cross-spawn escapes. Includes the space so an unquoted shim path with
+// spaces survives cmd.exe's /s quote stripping.
+const CMD_META_CHARS = /([()\][%!^"`<>&|;, *?])/g;
+
+/** Caret-escape a batch-file path for the cmd.exe command line. */
+function escapeCmdCommand(command: string): string {
+  return command.replace(CMD_META_CHARS, "^$1");
+}
+
+/**
+ * Escape one argument for a batch file run through `cmd.exe /d /s /c`.
+ * First apply CommandLineToArgvW backslash/quote rules, then caret-escape
+ * twice: a batch file's command line passes through cmd.exe's parser twice
+ * (once for the shim invocation, once inside the shim's own expansion).
+ * This is cross-spawn's escaping algorithm with the classical backslash
+ * regexes: they double ALL trailing backslashes (cross-spawn 7.0.6's
+ * ReDoS-hardened variants leave an unterminated quote for two or more), and
+ * their worst-case quadratic backtracking is irrelevant here because every
+ * argument is a short, locally sourced flag, model name, or validated
+ * session id.
+ */
+function escapeCmdArgument(argument: string): string {
+  let escaped = argument.replace(/(\\*)"/g, '$1$1\\"');
+  escaped = escaped.replace(/(\\*)$/, "$1$1");
+  escaped = `"${escaped}"`;
+  return escaped.replace(CMD_META_CHARS, "^$1").replace(CMD_META_CHARS, "^$1");
+}
+
 /**
  * Spawn a native command without a shell on Unix. On Windows, npm exposes CLI
  * packages as .cmd shims, which CreateProcess cannot execute directly; route
- * only those shims through cmd.exe. Callers should keep arguments structured
- * and must not build a command string themselves.
+ * only those shims through cmd.exe. The whole invocation is built as a single
+ * pre-escaped command line passed verbatim: letting Node quote the pieces
+ * breaks under `/s` (cmd strips the first and last quote on the line, so a
+ * shim path containing a space — any `C:\Users\First Last\...` npm prefix —
+ * stops parsing at the space) and leaves cmd metacharacters in arguments
+ * uninterpreted-by-Node but live-in-cmd. Callers should keep arguments
+ * structured and must not build a command string themselves.
  */
 export function spawnCommand(command: string, args: string[], options: SpawnOptions): ChildProcess {
   const searchOptions = optionsWithSearchPath(options);
   const resolved = executable(command, searchOptions.env ?? process.env);
   const spawnOptions = optionsForExecutable(searchOptions, resolved);
   if (process.platform !== "win32" || !/\.(?:cmd|bat)$/i.test(resolved)) return spawn(resolved, args, spawnOptions);
-  const child = spawn(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", resolved, ...args], spawnOptions) as TaggedChild;
+  const commandLine = [escapeCmdCommand(path.normalize(resolved)), ...args.map(escapeCmdArgument)].join(" ");
+  const child = spawn(
+    process.env.ComSpec ?? "cmd.exe",
+    ["/d", "/s", "/c", `"${commandLine}"`],
+    { ...spawnOptions, windowsVerbatimArguments: true },
+  ) as TaggedChild;
   child[WINDOWS_SHIM] = true;
   return child;
 }

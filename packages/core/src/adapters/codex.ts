@@ -19,15 +19,23 @@ interface GeneratedImageSnapshot {
   modifiedAt: number;
 }
 
+// Codex session/thread ids are UUIDs. Session ids are provider data that we
+// persist and later place on a resume command line (which on Windows passes
+// through cmd.exe) and in a filesystem path, so refuse anything outside a
+// conservative charset rather than trust the store. The leading character
+// must be alphanumeric so "." and ".." can never reach a path join.
+const SAFE_SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
 function codexHome(): string {
   const configured = process.env.CODEX_HOME;
   return configured && path.isAbsolute(configured) ? configured : path.join(os.homedir(), ".codex");
 }
 
 function generatedImagesDir(sessionId: string): string | null {
-  // Session ids are provider data. Refuse separators before using one as a
-  // directory component so a malformed event cannot broaden the scan.
-  if (!sessionId || path.basename(sessionId) !== sessionId || sessionId.includes("\\")) return null;
+  // Refuse separators (and everything else outside the safe charset) before
+  // using a session id as a directory component so a malformed event cannot
+  // broaden the scan.
+  if (!SAFE_SESSION_ID.test(sessionId)) return null;
   return path.join(codexHome(), "generated_images", sessionId);
 }
 
@@ -110,6 +118,9 @@ export function codexAdapter(spec: AgentSelection, permission: PermissionMode): 
   return {
     agent: "codex",
     startTurn(prompt: string, opts: TurnOptions, cb: TurnCallbacks): TurnHandle {
+      if (opts.resumeSessionId && !SAFE_SESSION_ID.test(opts.resumeSessionId)) {
+        throw new Error("Refusing to resume: the stored Codex session id contains unexpected characters");
+      }
       const base = ["exec", "--json", "--color", "never", "--skip-git-repo-check", ...specArgs(spec)];
       const sandbox = ["-s", permission === "read-only" ? "read-only" : "workspace-write"];
       const args = opts.resumeSessionId
@@ -168,7 +179,7 @@ export function codexAdapter(spec: AgentSelection, permission: PermissionMode): 
 
         const handleEvent = (event: Rec): void => {
           const id = event.thread_id ?? rec(event.thread).id ?? event.session_id;
-          if (typeof id === "string") {
+          if (typeof id === "string" && SAFE_SESSION_ID.test(id)) {
             if (opts.resumeSessionId && id !== opts.resumeSessionId && !sessionLost) {
               // Codex started a different thread than the one we asked it to
               // resume — the old rollout is gone. Stop before tokens are spent;
