@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import type { AgentId, EventEnvelope, Thread as ThreadT } from "@stereo/core";
+import type { AgentId, AssistantArtifact, EventEnvelope, Thread as ThreadT } from "@stereo/core";
 import { AGENT_NAME, formatTokens } from "../labels";
 import { Markdown } from "./Markdown";
 import { AttachmentPreview } from "./AttachmentPreview";
@@ -14,13 +14,20 @@ interface Props {
 
 type TranscriptItem =
   | { type: "event"; envelope: EventEnvelope }
-  | { type: "tools"; envelopes: EventEnvelope[] };
+  | { type: "tools"; envelopes: EventEnvelope[] }
+  | { type: "artifacts"; envelopes: EventEnvelope[] };
 
-/** Keep noisy runs of tool calls compact without hiding them from the transcript. */
+/** Keep noisy tool runs compact and display adjacent artifacts as one gallery. */
 function groupEvents(events: EventEnvelope[]): TranscriptItem[] {
   const items: TranscriptItem[] = [];
 
   for (const envelope of events) {
+    if (envelope.event.type === "assistant-artifact") {
+      const previous = items.at(-1);
+      if (previous?.type === "artifacts") previous.envelopes.push(envelope);
+      else items.push({ type: "artifacts", envelopes: [envelope] });
+      continue;
+    }
     if (envelope.event.type !== "tool") {
       items.push({ type: "event", envelope });
       continue;
@@ -32,6 +39,25 @@ function groupEvents(events: EventEnvelope[]): TranscriptItem[] {
   }
 
   return items;
+}
+
+function ArtifactGroup({ envelopes, agent }: { envelopes: EventEnvelope[]; agent: AgentId }) {
+  const artifacts = envelopes.flatMap((envelope) =>
+    envelope.event.type === "assistant-artifact" ? [envelope.event.artifact] : [],
+  );
+  return (
+    <div className={`agent-message assistant-artifacts ${agent}`}>
+      <div className="message-label">{AGENT_NAME[agent]}</div>
+      <div className="assistant-artifact-grid">
+        {artifacts.map((artifact: AssistantArtifact) => (
+          <div className="assistant-artifact-card" key={artifact.id}>
+            <AttachmentPreview attachment={artifact} />
+            <span title={artifact.name}>{artifact.name}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function ToolIcon({ name }: { name: string }) {
@@ -115,6 +141,8 @@ function EventRow({ envelope, agent, onOpenLink, resolvedPermissions, onResolveP
           <Markdown text={e.text} onOpenLink={onOpenLink} />
         </div>
       );
+    case "assistant-artifact":
+      return null;
     case "tool":
       return null;
     case "permission-request": {
@@ -200,6 +228,8 @@ export function Thread({ thread, events, live, onOpenLink, onResolvePermission }
         {items.map((item) =>
           item.type === "tools" ? (
             <ToolGroup key={`tools-${item.envelopes[0]?.seq}`} envelopes={item.envelopes} agent={thread.agent.agent} />
+          ) : item.type === "artifacts" ? (
+            <ArtifactGroup key={`artifacts-${item.envelopes[0]?.seq}`} envelopes={item.envelopes} agent={thread.agent.agent} />
           ) : (
             <EventRow key={item.envelope.seq} envelope={item.envelope} agent={thread.agent.agent} onOpenLink={onOpenLink} resolvedPermissions={resolvedPermissions} onResolvePermission={onResolvePermission} />
           ),

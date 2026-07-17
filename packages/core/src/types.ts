@@ -78,6 +78,16 @@ export interface Attachment {
   size: number;
 }
 
+/** A file produced by an assistant and copied into Stereo-managed storage. */
+export interface AssistantArtifact {
+  id: string;
+  kind: "image";
+  path: string;
+  name: string;
+  mimeType: string;
+  size: number;
+}
+
 export interface QueuedMessage {
   id: string;
   text: string;
@@ -125,6 +135,7 @@ export type ThreadEvent =
   | { type: "user-message"; text: string; attachments?: Attachment[]; messageId?: string }
   | { type: "briefing"; text: string; trimmedEvents: number; approxTokens: number }
   | { type: "agent-text"; text: string }
+  | { type: "assistant-artifact"; artifact: AssistantArtifact }
   | { type: "tool"; name: string; detail: string }
   | { type: "permission-request"; request: PermissionRequest }
   | { type: "permission-response"; requestId: string; allowed: boolean }

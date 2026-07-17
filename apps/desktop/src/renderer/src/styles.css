@@ -1292,6 +1292,42 @@ button.chip:hover {
   position: relative;
 }
 
+.assistant-artifact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 280px));
+  gap: 10px;
+}
+
+.assistant-artifact-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-2);
+}
+
+.assistant-artifact-card .attachment-thumbnail {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  display: block;
+  border-radius: 0;
+}
+
+.assistant-artifact-card .attachment-thumbnail img {
+  object-fit: contain;
+}
+
+.assistant-artifact-card > span {
+  display: block;
+  overflow: hidden;
+  padding: 7px 9px;
+  color: var(--text-2);
+  font: 10.5px/1.2 var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .cursor {
   display: inline-block;
   width: 7px;

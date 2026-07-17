@@ -6,6 +6,7 @@ import {
   detectClaude,
   detectCodex,
   type AgentSelection,
+  type AssistantArtifact,
   type Attachment,
   type EventEnvelope,
   type EditorPreference,
@@ -58,16 +59,19 @@ function saveSettings(settings: Settings): void {
 let engine: Engine;
 let win: BrowserWindow | null = null;
 
-// The renderer may only preview files the user actually attached: paths are
-// approved when the preload resolves a real dropped/picked file, when a
-// message is sent with attachments, or when persisted history mentions them.
-// This keeps "file:preview" from being an arbitrary-file read primitive.
+// The renderer may only preview files the user attached or files the engine
+// imported into managed assistant-artifact storage. This keeps "file:preview"
+// from becoming an arbitrary-file read primitive.
 const previewablePaths = new Set<string>();
 
 function approveAttachments(attachments: Attachment[] | undefined): void {
   for (const attachment of attachments ?? []) {
     if (typeof attachment?.path === "string" && attachment.path) previewablePaths.add(attachment.path);
   }
+}
+
+function approveArtifact(artifact: AssistantArtifact | undefined): void {
+  if (typeof artifact?.path === "string" && artifact.path) previewablePaths.add(artifact.path);
 }
 
 function createWindow(): void {
@@ -109,6 +113,7 @@ void app.whenReady().then(() => {
   const settings = loadSettings();
   engine = new Engine(settings, path.join(app.getPath("userData"), "data"));
   engine.on("event", (envelope: EventEnvelope) => {
+    if (envelope.event.type === "assistant-artifact") approveArtifact(envelope.event.artifact);
     win?.webContents.send("stereo:event", envelope);
     if (envelope.event.type === "turn-end" && loadSettings().notifyOnComplete && !win?.isFocused() && Notification.isSupported()) {
       const thread = engine.listThreads().find((candidate) => candidate.id === envelope.threadId);
@@ -193,6 +198,7 @@ void app.whenReady().then(() => {
     const events = engine.eventsFor(threadId);
     for (const envelope of events) {
       if (envelope.event.type === "user-message") approveAttachments(envelope.event.attachments);
+      if (envelope.event.type === "assistant-artifact") approveArtifact(envelope.event.artifact);
     }
     return events;
   });

@@ -7,6 +7,8 @@ export interface TurnCallbacks {
   onText(text: string): void;
   /** A tool invocation with human-readable detail (command, file path, …). */
   onTool(name: string, detail: string): void;
+  /** A provider-produced local file that the host should validate and import. */
+  onArtifact(filePath: string): void;
   /** Authoritative usage for the turn, reported once from the final result. */
   onUsage(usage: TokenUsage): void;
   /** Ask the host to resolve a provider permission prompt. */

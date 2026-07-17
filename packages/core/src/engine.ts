@@ -1,7 +1,10 @@
 import { EventEmitter } from "node:events";
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import type {
   AgentSelection,
+  AssistantArtifact,
   Attachment,
   EventEnvelope,
   PermissionRequest,
@@ -24,6 +27,32 @@ import { normalizeAgentSelection, validateAgentSelection } from "./models.js";
 import { ThreadStore } from "./store.js";
 
 const MAX_REVIEW_DIFF_CHARS = 200_000;
+const MAX_ARTIFACT_BYTES = 15 * 1024 * 1024;
+const ARTIFACT_MIME: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+};
+
+function hasImageSignature(filePath: string, mimeType: string): boolean {
+  const header = Buffer.alloc(12);
+  let descriptor: number | undefined;
+  try {
+    descriptor = fs.openSync(filePath, "r");
+    const length = fs.readSync(descriptor, header, 0, header.length, 0);
+    if (mimeType === "image/png") return length >= 8 && header.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    if (mimeType === "image/jpeg") return length >= 3 && header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff;
+    if (mimeType === "image/gif") return length >= 6 && ["GIF87a", "GIF89a"].includes(header.subarray(0, 6).toString("ascii"));
+    if (mimeType === "image/webp") return length >= 12 && header.subarray(0, 4).toString("ascii") === "RIFF" && header.subarray(8, 12).toString("ascii") === "WEBP";
+    return false;
+  } catch {
+    return false;
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+  }
+}
 
 type AdapterFactory = (thread: Thread) => AgentAdapter;
 const ADAPTERS: Record<Thread["agent"]["agent"], AdapterFactory> = {
@@ -72,6 +101,7 @@ export class Engine extends EventEmitter {
   private queues = new Map<string, QueuedMessage[]>();
   private projects = new Map<string, Project>();
   private permissionResolvers = new Map<string, { threadId: string; resolve: (allowed: boolean) => void }>();
+  private artifactsDir: string;
 
   constructor(
     private settings: Settings,
@@ -80,6 +110,8 @@ export class Engine extends EventEmitter {
     super();
     applySubscriptionAuthToProcess();
     this.store = new ThreadStore(dataDir);
+    this.artifactsDir = path.join(dataDir, "artifacts");
+    fs.mkdirSync(this.artifactsDir, { recursive: true });
 
     for (const project of this.store.loadProjects()) this.projects.set(project.id, project);
     const savedQueues = this.store.loadQueues();
@@ -277,6 +309,7 @@ export class Engine extends EventEmitter {
     this.queues.delete(threadId);
     this.persistQueues();
     this.store.deleteEvents(threadId);
+    fs.rmSync(path.join(this.artifactsDir, threadId), { recursive: true, force: true });
     this.persist();
   }
 
@@ -420,6 +453,33 @@ export class Engine extends EventEmitter {
     this.emit("event", envelope);
   }
 
+  private importArtifact(threadId: string, sourcePath: string, ordinal: number): AssistantArtifact | null {
+    try {
+      const source = fs.realpathSync(sourcePath);
+      const stat = fs.statSync(source);
+      const extension = path.extname(source).toLowerCase();
+      const mimeType = ARTIFACT_MIME[extension];
+      if (!mimeType || !stat.isFile() || stat.size <= 0 || stat.size > MAX_ARTIFACT_BYTES || !hasImageSignature(source, mimeType)) return null;
+
+      const id = crypto.randomUUID();
+      const directory = path.join(this.artifactsDir, threadId);
+      fs.mkdirSync(directory, { recursive: true });
+      const destination = path.join(directory, `${id}${extension === ".jpeg" ? ".jpg" : extension}`);
+      fs.copyFileSync(source, destination, fs.constants.COPYFILE_EXCL);
+      const copied = fs.statSync(destination);
+      return {
+        id,
+        kind: "image",
+        path: destination,
+        name: `Generated image ${ordinal}${path.extname(destination)}`,
+        mimeType,
+        size: copied.size,
+      };
+    } catch {
+      return null;
+    }
+  }
+
   private persist(): void {
     this.store.saveThreads(this.list());
     this.emit("threads", this.listThreads());
@@ -465,10 +525,17 @@ export class Engine extends EventEmitter {
     this.persist();
 
     let turnUsage: TokenUsage | null = null;
+    let artifactOrdinal = 0;
     const callbacks = {
       onDelta: (text: string) => this.emit("delta", { threadId: thread.id, text }),
       onText: (text: string) => this.emitEvent(thread.id, { type: "agent-text", text }),
       onTool: (name: string, detail: string) => this.emitEvent(thread.id, { type: "tool", name, detail }),
+      onArtifact: (filePath: string) => {
+        const artifact = this.importArtifact(thread.id, filePath, artifactOrdinal + 1);
+        if (!artifact) return;
+        artifactOrdinal += 1;
+        this.emitEvent(thread.id, { type: "assistant-artifact", artifact });
+      },
       onUsage: (usage: TokenUsage) => {
         turnUsage = usage;
         thread.lastTurnUsage = usage;

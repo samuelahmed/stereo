@@ -43,6 +43,8 @@ function renderEvent(envelope: EventEnvelope, agentLabel: string): TranscriptPar
       };
     case "agent-text":
       return { isUser: false, text: `## ${agentLabel}\n${e.text}` };
+    case "assistant-artifact":
+      return { isUser: false, text: `> [generated ${e.artifact.kind}] ${e.artifact.path.replace(/[\r\n]/g, "")}` };
     case "tool":
       return { isUser: false, text: `> [${e.name}] ${e.detail}` };
     case "briefing":
