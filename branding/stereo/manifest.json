@@ -1,0 +1,22 @@
+{
+  "generatedBy": "branding/stereo/generate.mjs",
+  "canonicalViewBox": "0 0 80 80",
+  "primaryColor": "#3B78D8",
+  "staticAssets": [
+    "mark-primary.svg",
+    "mark-silent.svg",
+    "mark-cassette.svg",
+    "mark-ink.svg",
+    "mark-white.svg",
+    "tray-template.svg",
+    "favicon.svg",
+    "app-icon.svg",
+    "lockup-primary.svg",
+    "lockup-ink.svg"
+  ],
+  "motionAssets": [
+    "idle.svg",
+    "working.svg",
+    "wink.svg"
+  ]
+}

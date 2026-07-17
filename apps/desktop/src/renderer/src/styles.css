@@ -12,6 +12,10 @@
   --claude-dim: rgba(196, 179, 250, 0.14);
   --codex: #7cc0f5;
   --codex-dim: rgba(124, 192, 245, 0.13);
+  --stereo-blue: #3b78d8;
+  --stereo-blue-dark: #2f68c2;
+  --stereo-cream: #fffaf1;
+  --stereo-ink: #24212a;
   --success: #86d497;
   --danger: #ef8f8f;
   --warning: #e8c268;
@@ -88,10 +92,13 @@ select:focus-visible {
 .brand {
   -webkit-app-region: drag;
   flex: 1;
-  padding: 30px 7px 4px;
+  padding: 27px 7px 1px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
   font-size: 14.5px;
   font-weight: 650;
-  letter-spacing: 0.04em;
+  letter-spacing: -0.01em;
 }
 
 .shortcut-hint,
@@ -104,12 +111,120 @@ select:focus-visible {
   padding-bottom: 7px;
 }
 
-.brand-glyph {
-  background: linear-gradient(100deg, var(--claude), var(--codex));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  font-size: 15px;
+.stereo-brand-character {
+  width: 34px;
+  height: 34px;
+  margin: -4px -2px -4px -5px;
+  display: block;
+  overflow: visible;
+  flex: none;
+}
+
+.stereo-brand-rig,
+.stereo-brand-left-eye,
+.stereo-brand-left-pupil,
+.stereo-brand-right-pupil,
+.stereo-brand-left-leg,
+.stereo-brand-right-leg,
+.stereo-brand-mouth {
+  transform-box: fill-box;
+}
+
+.stereo-brand-rig,
+.stereo-brand-left-eye,
+.stereo-brand-mouth {
+  transform-origin: center;
+}
+
+.stereo-brand-character.motion-idle .stereo-brand-rig {
+  animation: stereo-brand-idle-bounce 1.8s steps(2) infinite;
+}
+
+.stereo-brand-character.motion-idle .stereo-brand-left-eye {
+  animation: stereo-brand-idle-wink 5.4s steps(1) infinite;
+}
+
+.stereo-brand-character.motion-idle .stereo-brand-left-pupil,
+.stereo-brand-character.motion-idle .stereo-brand-right-pupil {
+  animation: stereo-brand-idle-look 5.4s steps(1) infinite;
+}
+
+.stereo-brand-character.motion-working .stereo-brand-rig {
+  animation: stereo-brand-work-bounce 720ms steps(2) infinite;
+}
+
+.stereo-brand-character.motion-working .stereo-brand-left-leg {
+  animation: stereo-brand-left-step 720ms steps(2) infinite;
+}
+
+.stereo-brand-character.motion-working .stereo-brand-right-leg {
+  animation: stereo-brand-right-step 720ms steps(2) infinite;
+}
+
+.stereo-brand-character.motion-working .stereo-brand-left-pupil,
+.stereo-brand-character.motion-working .stereo-brand-right-pupil {
+  animation: stereo-brand-work-look 2.88s steps(1) infinite;
+}
+
+.stereo-brand-character.motion-working .stereo-brand-left-eye {
+  animation: stereo-brand-work-wink 4.32s steps(1) infinite;
+}
+
+.stereo-brand-character.motion-working .stereo-brand-mouth {
+  animation: stereo-brand-speak 720ms steps(2) infinite;
+}
+
+@keyframes stereo-brand-idle-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+@keyframes stereo-brand-work-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+@keyframes stereo-brand-idle-wink {
+  0%, 87%, 94%, 100% { transform: scaleY(1); }
+  89%, 92% { transform: scaleY(0.16); }
+}
+
+@keyframes stereo-brand-work-wink {
+  0%, 90%, 96%, 100% { transform: scaleY(1); }
+  92%, 94% { transform: scaleY(0.16); }
+}
+
+@keyframes stereo-brand-idle-look {
+  0%, 48%, 100% { transform: translateX(0); }
+  52%, 66% { transform: translateX(2px); }
+  70%, 84% { transform: translateX(-2px); }
+}
+
+@keyframes stereo-brand-work-look {
+  0%, 38%, 100% { transform: translateX(0); }
+  42%, 64% { transform: translateX(2px); }
+  68%, 90% { transform: translateX(-2px); }
+}
+
+@keyframes stereo-brand-left-step {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+@keyframes stereo-brand-right-step {
+  0%, 100% { transform: translateY(-2px); }
+  50% { transform: translateY(0); }
+}
+
+@keyframes stereo-brand-speak {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(1.55); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stereo-brand-character * {
+    animation: none !important;
+  }
 }
 
 button.new-thread {

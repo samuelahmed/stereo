@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { AgentStatusInfo, Project, Settings, Thread } from "@stereo/core";
 import { AGENT_NAME, timeAgo } from "../labels";
 import { AgentPicker } from "./AgentPicker";
+import { StereoBrandCharacter } from "./StereoBrandCharacter";
 
 interface Props {
   threads: Thread[];
@@ -231,6 +232,8 @@ export function Sidebar({
   const titleRef = useRef<HTMLInputElement>(null);
 
   const activeThreads = useMemo(() => threads.filter((thread) => !thread.archivedAt), [threads]);
+  const brandIsWorking = activeThreads.some((thread) => thread.status === "running");
+  const brandMotion = brandIsWorking ? "working" : "none";
   const archivedThreads = useMemo(() => threads.filter((thread) => thread.archivedAt), [threads]);
   const filteredThreads = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -375,8 +378,9 @@ export function Sidebar({
   return (
     <aside className="sidebar" style={{ width }} aria-label="Threads">
       <div className="brand-row">
-        <div className="brand">
-          <span className="brand-glyph">◐</span> Stereo
+        <div className="brand" aria-label={brandIsWorking ? "Stereo is working" : "Stereo is idle"}>
+          <StereoBrandCharacter motion={brandMotion} />
+          <span>stereo</span>
         </div>
         <span className="shortcut-hint">⌘K</span>
       </div>

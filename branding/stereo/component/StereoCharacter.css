@@ -1,0 +1,118 @@
+.stereo-character {
+  display: block;
+  overflow: visible;
+}
+
+.stereo-character-rig,
+.stereo-character .left-eye,
+.stereo-character .left-pupil,
+.stereo-character .right-pupil,
+.stereo-character .left-leg,
+.stereo-character .right-leg,
+.stereo-character .slot {
+  transform-box: fill-box;
+}
+
+.stereo-character-rig,
+.stereo-character .left-eye,
+.stereo-character .slot {
+  transform-origin: center;
+}
+
+.stereo-character.motion-idle .stereo-character-rig {
+  animation: stereo-idle-bounce 1.8s steps(2) infinite;
+}
+
+.stereo-character.motion-idle .left-eye {
+  animation: stereo-idle-wink 5.4s steps(1) infinite;
+}
+
+.stereo-character.motion-idle .left-pupil,
+.stereo-character.motion-idle .right-pupil {
+  animation: stereo-idle-look 5.4s steps(1) infinite;
+}
+
+.stereo-character.motion-working .stereo-character-rig {
+  animation: stereo-work-bounce 720ms steps(2) infinite;
+}
+
+.stereo-character.motion-working .left-leg {
+  animation: stereo-left-step 720ms steps(2) infinite;
+}
+
+.stereo-character.motion-working .right-leg {
+  animation: stereo-right-step 720ms steps(2) infinite;
+}
+
+.stereo-character.motion-working .left-pupil,
+.stereo-character.motion-working .right-pupil {
+  animation: stereo-work-look 2.88s steps(1) infinite;
+}
+
+.stereo-character.motion-working .left-eye {
+  animation: stereo-work-wink 4.32s steps(1) infinite;
+}
+
+.stereo-character.motion-working .slot {
+  animation: stereo-speak 720ms steps(2) infinite;
+}
+
+.stereo-character.motion-wink .left-eye {
+  animation: stereo-wink 1.8s steps(1) infinite;
+}
+
+@keyframes stereo-idle-look {
+  0%, 48%, 100% { transform: translateX(0); }
+  52%, 66% { transform: translateX(2px); }
+  70%, 84% { transform: translateX(-2px); }
+}
+
+@keyframes stereo-idle-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+@keyframes stereo-work-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+@keyframes stereo-idle-wink {
+  0%, 87%, 94%, 100% { transform: scaleY(1); }
+  89%, 92% { transform: scaleY(0.16); }
+}
+
+@keyframes stereo-work-wink {
+  0%, 90%, 96%, 100% { transform: scaleY(1); }
+  92%, 94% { transform: scaleY(0.16); }
+}
+
+@keyframes stereo-work-look {
+  0%, 38%, 100% { transform: translateX(0); }
+  42%, 64% { transform: translateX(2px); }
+  68%, 90% { transform: translateX(-2px); }
+}
+
+@keyframes stereo-wink {
+  0%, 38%, 72%, 100% { transform: scaleY(1); }
+  44%, 64% { transform: scaleY(0.16); }
+}
+
+@keyframes stereo-left-step {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+@keyframes stereo-right-step {
+  0%, 100% { transform: translateY(-2px); }
+  50% { transform: translateY(0); }
+}
+
+@keyframes stereo-speak {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(1.5); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stereo-character * { animation: none !important; }
+}
