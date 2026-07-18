@@ -1,0 +1,133 @@
+name: Release desktop preview
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.13.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Match package version to tag
+        shell: bash
+        run: |
+          package_version="$(node -p "require('./apps/desktop/package.json').version")"
+          test "v${package_version}" = "${GITHUB_REF_NAME}" || {
+            echo "Tag ${GITHUB_REF_NAME} does not match desktop version v${package_version}." >&2
+            exit 1
+          }
+      - run: pnpm typecheck
+      - run: pnpm build
+
+  package:
+    name: Package ${{ matrix.label }}
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macOS Apple Silicon
+            os: macos-15
+            platform: mac
+            target: zip
+            architecture: arm64
+            asset: stereo-darwin-arm64.zip
+          - label: macOS Intel
+            os: macos-15-intel
+            platform: mac
+            target: zip
+            architecture: x64
+            asset: stereo-darwin-x64.zip
+          - label: Windows x64
+            os: windows-latest
+            platform: win
+            target: zip
+            architecture: x64
+            asset: stereo-windows-x64.zip
+          - label: Linux x64
+            os: ubuntu-24.04
+            platform: linux
+            target: tar.gz
+            architecture: x64
+            asset: stereo-linux-x64.tar.gz
+          - label: Linux arm64
+            os: ubuntu-24.04-arm
+            platform: linux
+            target: tar.gz
+            architecture: arm64
+            asset: stereo-linux-arm64.tar.gz
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.13.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @stereo/desktop build
+      - name: Package application
+        working-directory: apps/desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: pnpm dlx electron-builder@26.15.3 --${{ matrix.platform }} ${{ matrix.target }} --${{ matrix.architecture }} --publish never
+      - name: Check packaged artifact
+        shell: bash
+        run: test -s "apps/desktop/dist/${{ matrix.asset }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}-${{ matrix.architecture }}
+          path: apps/desktop/dist/${{ matrix.asset }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish GitHub release
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+      - name: Generate checksums
+        working-directory: release
+        run: sha256sum stereo-* > SHA256SUMS
+      - name: Attest public build provenance
+        if: github.event.repository.visibility == 'public'
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: "release/stereo-*"
+      - name: Publish immutable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "Stereo ${GITHUB_REF_NAME#v}" \
+            --generate-notes

@@ -19,8 +19,10 @@ import {
   normalizeAgentSelection,
 } from "@stereo/core";
 import { openMarkdownLink } from "./link-opener.js";
+import { restoreMacShellPath } from "./shell-path.js";
 
 app.setName("Stereo");
+if (app.isPackaged) restoreMacShellPath();
 
 function applicationIconPath(): string {
   return app.isPackaged

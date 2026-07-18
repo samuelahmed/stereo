@@ -10,13 +10,44 @@
     "stereo": "electron-vite build && node scripts/run-stereo.cjs",
     "icons": "node scripts/generate-app-icons.cjs",
     "build": "electron-vite build",
+    "package": "electron-vite build && pnpm dlx electron-builder@26.15.3 --publish never",
     "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json"
   },
   "build": {
-    "appId": "app.stereo.desktop",
+    "appId": "dev.getstereo.stereo",
     "productName": "Stereo",
+    "asar": true,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
     "mac": {
-      "icon": "resources/icon.icns"
+      "icon": "resources/icon.icns",
+      "category": "public.app-category.developer-tools",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "target": [
+        "zip"
+      ],
+      "artifactName": "stereo-darwin-${arch}.${ext}"
+    },
+    "win": {
+      "icon": "resources/icon.png",
+      "target": [
+        "zip"
+      ],
+      "artifactName": "stereo-windows-${arch}.${ext}"
+    },
+    "linux": {
+      "icon": "resources/icon.png",
+      "category": "Development",
+      "target": [
+        "tar.gz"
+      ],
+      "artifactName": "stereo-linux-${arch}.${ext}"
     },
     "extraResources": [
       {

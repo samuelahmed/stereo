@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { StereoCharacter } from "../../../branding/stereo/component/StereoCharacter";
 
-const INSTALL_COMMAND = "curl -fsSL https://getstereo.dev/install | sh";
+const POSIX_INSTALL_COMMAND = "curl -fsSL https://getstereo.com/install | sh";
+const WINDOWS_INSTALL_COMMAND = "irm https://getstereo.com/install.ps1 | iex";
 const GITHUB_URL = "https://github.com/samuelahmed/stereo";
 
 function ArrowIcon() {
@@ -42,13 +43,18 @@ function CopyIcon({ copied }: { copied: boolean }) {
 
 function InstallCommand({ compact = false }: { compact?: boolean }) {
   const [copied, setCopied] = useState(false);
+  const [command, setCommand] = useState(POSIX_INSTALL_COMMAND);
+
+  useEffect(() => {
+    if (/Windows/i.test(navigator.userAgent)) setCommand(WINDOWS_INSTALL_COMMAND);
+  }, []);
 
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(INSTALL_COMMAND);
+      await navigator.clipboard.writeText(command);
     } catch {
       const textarea = document.createElement("textarea");
-      textarea.value = INSTALL_COMMAND;
+      textarea.value = command;
       textarea.style.position = "fixed";
       textarea.style.opacity = "0";
       document.body.appendChild(textarea);
@@ -67,8 +73,8 @@ function InstallCommand({ compact = false }: { compact?: boolean }) {
 
   return (
     <div className={`install-command ${compact ? "compact" : ""}`}>
-      <span className="prompt" aria-hidden="true">$</span>
-      <code>{INSTALL_COMMAND}</code>
+      <span className="prompt" aria-hidden="true">{command === WINDOWS_INSTALL_COMMAND ? ">" : "$"}</span>
+      <code>{command}</code>
       <button type="button" onClick={() => void copy()} aria-label={copied ? "Install command copied" : "Copy install command"}>
         <CopyIcon copied={copied} />
         <span>{copied ? "Copied" : "Copy"}</span>

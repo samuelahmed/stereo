@@ -37,7 +37,7 @@ apps/desktop         Electron + React
   src/main             window, engine host, IPC
   src/preload          window.stereo bridge
   src/renderer         sidebar · thread view · composer · fork/review menus
-apps/web             getstereo.dev landing site (Vite + React)
+apps/web             getstereo.com landing site (Vite + React)
 ```
 
 The transcript is the canonical record; the CLIs' own session ids are only an
@@ -58,6 +58,33 @@ pnpm build
 Type checking and production builds run in CI on macOS, Windows, and Linux.
 The copied native-session command uses POSIX shell syntax on macOS/Linux and
 PowerShell syntax on Windows.
+
+## Install and release
+
+The website serves a stable installer while immutable application archives live
+on GitHub Releases:
+
+```sh
+curl -fsSL https://getstereo.com/install | sh
+```
+
+Windows visitors receive the PowerShell equivalent from the website. Both
+installers select the current platform artifact, verify it against the release's
+`SHA256SUMS`, and replace an existing installation only after extraction succeeds.
+
+Ordinary pushes run cross-platform checks but do not replace the downloadable
+application. To publish a tested release from a clean, up-to-date `main` branch:
+
+```sh
+pnpm release 0.1.0
+```
+
+The release helper aligns every workspace version, runs all checks, creates an
+annotated version tag, and pushes the commit and tag atomically. The tag triggers
+the release workflow, whose final job publishes the release only after every
+platform package succeeds. Do not mark developer-preview releases as GitHub
+prereleases: the installers intentionally use GitHub's stable `latest/download`
+asset URLs.
 
 Opening `http://localhost:5175` in a plain browser shows a design-mode mock (no real
 agents, no tokens spent). The real engine only runs inside the Electron shell.
