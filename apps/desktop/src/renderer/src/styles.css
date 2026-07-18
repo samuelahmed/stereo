@@ -676,7 +676,7 @@ button.new-thread:hover {
   align-items: center;
   min-height: 42px;
   gap: 10px;
-  padding: 5px 14px;
+  padding: 5px max(14px, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 14px)) 5px 14px;
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
   position: relative;

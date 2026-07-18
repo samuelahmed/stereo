@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, Notification, shell } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 import {
@@ -177,7 +177,10 @@ function createWindow(): void {
     minHeight: 560,
     title: "Stereo",
     icon: applicationIconPath(),
-    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : process.platform === "win32" ? "hidden" : "default",
+    titleBarOverlay: process.platform === "win32"
+      ? { color: "#131316", symbolColor: "#ececef", height: 42 }
+      : false,
     backgroundColor: "#131316",
     webPreferences: {
       preload: path.join(import.meta.dirname, "../preload/index.mjs"),
@@ -216,6 +219,7 @@ function createWindow(): void {
 
 void app.whenReady().then(() => {
   if (process.platform === "darwin") app.dock?.setIcon(applicationIconPath());
+  if (process.platform === "win32") Menu.setApplicationMenu(null);
   const settings = loadSettings();
   engine = new Engine(settings, path.join(app.getPath("userData"), "data"));
   engine.on("event", (envelope: EventEnvelope) => {
