@@ -37,6 +37,7 @@ apps/desktop         Electron + React
   src/main             window, engine host, IPC
   src/preload          window.stereo bridge
   src/renderer         sidebar · thread view · composer · fork/review menus
+apps/web             getstereo.dev landing site (Vite + React)
 ```
 
 The transcript is the canonical record; the CLIs' own session ids are only an
@@ -48,6 +49,7 @@ run on the native CLI subscriptions already signed in on the computer.
 ```sh
 pnpm install
 pnpm dev     # electron-vite dev, watches main + renderer
+pnpm web     # landing site at http://localhost:4173
 pnpm stereo  # build once, launch the Electron app, no file watcher
 pnpm typecheck
 pnpm build
