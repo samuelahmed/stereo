@@ -6,6 +6,8 @@ const POSIX_INSTALL_COMMAND = "curl -fsSL https://getstereo.dev/install | sh";
 const WINDOWS_INSTALL_COMMAND = "curl.exe -fsSL https://getstereo.dev/install.ps1 | Out-String | iex";
 const GITHUB_URL = "https://github.com/samuelahmed/stereo";
 
+/* ---------- Icons ---------- */
+
 function ArrowIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -41,7 +43,9 @@ function CopyIcon({ copied }: { copied: boolean }) {
   );
 }
 
-function InstallCommand({ compact = false }: { compact?: boolean }) {
+/* ---------- Install command ---------- */
+
+function InstallCommand() {
   const [copied, setCopied] = useState(false);
   const [command, setCommand] = useState(POSIX_INSTALL_COMMAND);
 
@@ -72,7 +76,7 @@ function InstallCommand({ compact = false }: { compact?: boolean }) {
   }, [copied]);
 
   return (
-    <div className={`install-command ${compact ? "compact" : ""}`}>
+    <div className="install-command">
       <span className="prompt" aria-hidden="true">{command === WINDOWS_INSTALL_COMMAND ? ">" : "$"}</span>
       <code>{command}</code>
       <button type="button" onClick={() => void copy()} aria-label={copied ? "Install command copied" : "Copy install command"}>
@@ -83,9 +87,15 @@ function InstallCommand({ compact = false }: { compact?: boolean }) {
   );
 }
 
+/* ---------- Product window (accurate mock: Codex reviewing Claude's diff) ---------- */
+
 function ProductWindow() {
   return (
-    <div className="product-window" role="img" aria-label="Stereo showing a Claude conversation in the Stereo repository">
+    <div
+      className="product-window"
+      role="img"
+      aria-label="The Stereo app: Codex giving a read-only review of a change built with Claude, in the same window as the Claude threads"
+    >
       <div className="window-bar">
         <span className="traffic red" />
         <span className="traffic yellow" />
@@ -95,23 +105,25 @@ function ProductWindow() {
       <div className="window-body">
         <aside className="mock-sidebar">
           <div className="mock-brand">
-            <StereoCharacter size={29} motion="idle" label="" />
+            <StereoCharacter size={30} motion="idle" label="" />
             <strong>stereo</strong>
           </div>
           <div className="mock-new"><span>＋</span> New thread <kbd>⌘N</kbd></div>
-          <div className="mock-search">⌕&nbsp;&nbsp;Search threads</div>
-          <div className="mock-project"><span>⌄&nbsp;&nbsp;STEREO</span><small>3</small></div>
-          <div className="mock-thread active"><i className="claude-dot" /> Refine persistence recovery</div>
-          <div className="mock-thread"><i className="codex-dot" /> Trace renderer startup</div>
-          <div className="mock-thread"><i className="claude-dot" /> Simplify review handoff</div>
+          <div className="mock-search">⌕&nbsp;&nbsp;Search threads <kbd>⌘K</kbd></div>
+          <div className="mock-project"><span>⌄&nbsp;&nbsp;STEREO</span><small>4</small></div>
+          <div className="mock-thread"><i className="dot claude" /> Refine persistence recovery</div>
+          <div className="mock-thread active"><i className="dot codex" /> Review: persistence recovery</div>
+          <div className="mock-thread"><i className="dot codex pulsing" /> Trace renderer startup</div>
+          <div className="mock-thread"><i className="dot claude" /> Simplify briefing compiler</div>
           <div className="mock-settings">Settings <kbd>⌘,</kbd></div>
         </aside>
 
         <div className="mock-main">
           <div className="mock-header">
             <div className="mock-heading">
-              <strong>Refine persistence recovery</strong>
-              <span>stereo</span><span>Claude · Opus</span><span>18.4k tokens</span>
+              <strong>Review: persistence recovery</strong>
+              <em className="mock-badge">Review · Read only</em>
+              <span>Codex · High</span>
             </div>
             <div className="mock-header-right">
               <span className="mock-diff">3 files <i>+84</i> <b>−19</b></span>
@@ -120,25 +132,28 @@ function ProductWindow() {
           </div>
 
           <div className="mock-transcript">
-            <div className="mock-user">
-              <span>YOU</span>
-              <p>Make startup recovery corruption-safe. Preserve every valid transcript entry and keep the change scoped.</p>
-            </div>
-            <div className="mock-tools">
+            <div className="mock-briefing">
               <span className="chevron">⌄</span>
-              <strong>6 tool calls</strong>
-              <span>store.ts · store.test.ts · pnpm test</span>
+              <strong>Briefing</strong>
+              <span>uncommitted diff + conversation with Claude · ~18.4k tokens</span>
             </div>
-            <div className="mock-agent">
-              <span>CLAUDE</span>
-              <p>I changed recovery to validate the append-only log one entry at a time. A partial final write is quarantined while every earlier valid event remains available.</p>
-              <div className="mock-result"><CheckIcon /> 38 tests passed</div>
+            <div className="mock-agent codex">
+              <span>CODEX</span>
+              <p>
+                Reviewed the diff against the thread’s intent. Two findings, by severity:
+              </p>
+              <ol>
+                <li><b>recover() renames before fsync</b>; a crash in that window can still drop the tail entry the quarantine exists to save. <u>store.ts:214</u></li>
+                <li>Low: <code>parseEntry</code> accepts a trailing half-record when the log ends exactly at the buffer boundary. <u>store.ts:171</u></li>
+              </ol>
+              <p className="mock-close">No style notes. The scoped-change constraint holds.</p>
             </div>
+            <div className="mock-hint">Review is read-only · Sending a message lets you enable changes</div>
           </div>
 
           <div className="mock-composer">
             <span>Ask a follow-up…</span>
-            <small>⌘↵ send</small>
+            <small>Enter to send · Shift+Enter for a new line</small>
             <b>↑</b>
           </div>
         </div>
@@ -147,38 +162,40 @@ function ProductWindow() {
   );
 }
 
+/* ---------- The loop ---------- */
+
 const loopStories = [
   {
     label: "Clean",
-    surface: "Clean",
-    title: "Start with a clean working tree.",
-    copy: "Now the boundary is obvious. You know exactly what belongs to the next change, anything can be reverted without archaeology, and the repo is ready to go.",
+    surface: "01 · Clean",
+    title: "Start from a clean tree.",
+    copy: "The boundary is obvious: whatever shows up in the diff belongs to this change, and anything can be reverted without archaeology.",
     extra: null,
     detail: "git status --short  →  no output",
   },
   {
     label: "Build",
-    surface: "Build",
-    title: "Work in Stereo.",
-    copy: "Stereo is designed for this build step: use Claude, Codex, or both to complete one scoped change on one branch. Open as many conversations as the change needs; they all work against the same checkout.",
-    extra: "Fork a thread to the other lab when you want a different approach. Or use the built-in Review feature to hand the conversation and current changes to the other harness for a second set of eyes.",
-    detail: "one branch  ·  one scoped change  ·  multiple conversations",
+    surface: "02 · Build",
+    title: "Build the change in Stereo.",
+    copy: "Use Claude, Codex, or both to complete one scoped change on one branch. Open as many threads as the change needs; they all work against the same checkout.",
+    extra: "Fork a thread to the other lab for a different approach, or use the built-in Review feature to put the second agent on your diff. Approve it and the reviewer can fix its own findings.",
+    detail: "one branch  ·  one scoped change  ·  multiple threads",
   },
   {
     label: "Review",
-    surface: "Review",
-    title: "Go back to your editor.",
-    copy: "Read the diff in whatever review tool you already use. Run the code and your existing tests until you understand and trust the change.",
+    surface: "03 · Review",
+    title: "Read the diff in your editor.",
+    copy: "Stereo stays out of this step on purpose. Review with the tools you already trust, and run the change until you understand it.",
     extra: null,
     detail: "diff  ·  run  ·  test  ·  understand",
   },
   {
     label: "Commit",
-    surface: "Commit",
+    surface: "04 · Commit",
     title: "Commit however you already do.",
-    copy: "Keep what belongs, write the message, and commit from your IDE or CLI. The commit is the checkpoint; the clean tree means the next loop can begin.",
+    copy: "Keep what belongs, write the message, commit from your IDE or CLI. The tree is clean again, and the loop starts over.",
     extra: null,
-    detail: "git add  ·  git commit  ·  clean",
+    detail: "git add  ·  git commit  ·  clean again",
   },
 ];
 
@@ -191,6 +208,9 @@ function CommitLoop() {
   const [rotation, setRotation] = useState(-90);
   const [dragging, setDragging] = useState(false);
   const [characterReaction, setCharacterReaction] = useState(0);
+  const [engaged, setEngaged] = useState(false);
+  const [inView, setInView] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
   const rotationRef = useRef(-90);
   const dragRef = useRef<{ angle: number; rotation: number } | null>(null);
 
@@ -214,12 +234,30 @@ function CommitLoop() {
     setLoopRotation(rotationRef.current - distance * 90);
   };
 
+  /* The wheel turns by itself until the visitor takes over. */
+  useEffect(() => {
+    const node = rootRef.current;
+    if (!node || !("IntersectionObserver" in window)) return;
+    const observer = new IntersectionObserver(([entry]) => setInView(entry.isIntersecting), { threshold: 0.5 });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (engaged || !inView) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const timer = window.setInterval(() => moveBy(1), 4200);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engaged, inView]);
+
   const pointerAngle = (event: ReactPointerEvent<HTMLDivElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect();
     return Math.atan2(event.clientY - bounds.top - bounds.height / 2, event.clientX - bounds.left - bounds.width / 2) * 180 / Math.PI;
   };
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    setEngaged(true);
     if ((event.target as HTMLElement).closest("button")) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = { angle: pointerAngle(event), rotation: rotationRef.current };
@@ -249,16 +287,16 @@ function CommitLoop() {
   const story = loopStories[active];
 
   return (
-    <div className="loop-experience">
+    <div className="loop-experience" ref={rootRef}>
       <div className="loop-dial-column">
         <div
           className={`loop-dial ${dragging ? "dragging" : ""}`}
           role="group"
-          aria-label="Interactive commit loop. Drag the wheel, choose a step, or use the arrow keys."
+          aria-label="The loop Stereo is built for. Drag the wheel, choose a step, or use the arrow keys."
           tabIndex={0}
           onKeyDown={(event) => {
-            if (event.key === "ArrowRight" || event.key === "ArrowDown") { event.preventDefault(); moveBy(1); }
-            if (event.key === "ArrowLeft" || event.key === "ArrowUp") { event.preventDefault(); moveBy(-1); }
+            if (event.key === "ArrowRight" || event.key === "ArrowDown") { event.preventDefault(); setEngaged(true); moveBy(1); }
+            if (event.key === "ArrowLeft" || event.key === "ArrowUp") { event.preventDefault(); setEngaged(true); moveBy(-1); }
           }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
@@ -274,7 +312,7 @@ function CommitLoop() {
                 "--upright-angle": `${-(angle + rotation)}deg`,
               } as CSSProperties;
               return (
-                <button className={`loop-node ${index === active ? "active" : ""}`} style={style} type="button" key={item.label} onClick={() => moveTo(index)} aria-pressed={index === active}>
+                <button className={`loop-node ${index === active ? "active" : ""}`} style={style} type="button" key={item.label} onClick={() => { setEngaged(true); moveTo(index); }} aria-pressed={index === active}>
                   <span>{item.label}</span>
                 </button>
               );
@@ -282,9 +320,9 @@ function CommitLoop() {
           </div>
           <div className="loop-core" aria-hidden="true">
             <div key={characterReaction} className={`loop-core-character ${characterReaction > 0 ? "reacting" : ""}`}>
-              <StereoCharacter size={82} motion="idle" label="" />
+              <StereoCharacter size={74} motion="idle" label="" />
             </div>
-            <span>Commit loop</span>
+            <span>The loop</span>
           </div>
         </div>
       </div>
@@ -302,145 +340,84 @@ function CommitLoop() {
   );
 }
 
-const features = [
-  {
-    number: "01",
-    title: "Claude & Codex, one home.",
-    copy: "Run Claude and Codex against any repository without changing the native tools underneath.",
-    detail: "Two native harnesses. One local interface.",
-  },
-  {
-    number: "02",
-    title: "History that stays yours.",
-    copy: "Every thread is stored locally as a vendor-neutral transcript you can browse, resume, and carry forward.",
-    detail: "The harness session is an accelerator—not the record.",
-  },
-  {
-    number: "03",
-    title: "Fork across labs.",
-    copy: "Continue any conversation with the other lab, with the context handed over and every trim made visible.",
-    detail: "A new perspective without starting over.",
-  },
-  {
-    number: "04",
-    title: "Built-in review feature.",
-    copy: "Send your context and uncommitted change to the other harness for a second set of eyes, then follow up in the same thread.",
-    detail: "One-click review built above both harnesses.",
-  },
+/* ---------- The ledger ---------- */
+
+const doesItems = [
+  <>Runs the official <code>claude</code> and <code>codex</code> CLIs, the same agents you already use in the terminal.</>,
+  <>Hands your diff and the conversation behind it to the other agent for review. The reviewer starts read-only; approve it and it can fix its own findings in the same thread.</>,
+  <>Forks any thread to the other lab with the full context carried over.</>,
+  <>Keeps every thread as plain, vendor-neutral JSONL on your disk.</>,
 ];
 
+const neverItems = [
+  <>Never uses API keys or metered tokens. Sign in to each CLI and your existing plans cover everything.</>,
+  <>Never makes a worktree, a branch, or a commit. Agents work on your checkout, and you ship it.</>,
+  <>Never asks for an account. No server, no telemetry, no hosted anything.</>,
+  <>Never costs money. Free and MIT-licensed, and it stays that way.</>,
+];
+
+/* ---------- App ---------- */
+
 export function App() {
-  const [menuOpen, setMenuOpen] = useState(false);
-
-  useEffect(() => {
-    const close = () => setMenuOpen(false);
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
-    };
-    window.addEventListener("resize", close);
-    window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      window.removeEventListener("resize", close);
-      window.removeEventListener("keydown", closeOnEscape);
-    };
-  }, []);
-
   return (
     <div className="site-shell">
-      <a className="skip-link" href="#main">Skip to content</a>
-      <header className="site-header">
-        <a className="brand-link" href="#top" aria-label="Stereo home">
-          <StereoCharacter size={35} motion="idle" label="" />
-          <span>stereo</span>
-        </a>
-        <nav className={menuOpen ? "open" : ""} aria-label="Primary navigation">
-          <a href="#why" onClick={() => setMenuOpen(false)}>Why Stereo</a>
-          <a href="#features" onClick={() => setMenuOpen(false)}>Features</a>
-          <a className="github-nav" href={GITHUB_URL} target="_blank" rel="noreferrer">
-            <GitHubIcon /> GitHub
-          </a>
-        </nav>
-        <button className="menu-toggle" type="button" aria-label="Toggle navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
-          <span /><span />
-        </button>
-      </header>
-
-      <main id="main">
-        <section className="hero" id="top">
-          <div className="hero-copy">
-            <h1>Claude & Codex.<br /><em>One window.</em></h1>
-            <p className="hero-lede">
-              Stereo is a desktop shell for coding harnesses. Run Claude and Codex against your repos, keep permanent vendor-neutral history, and review a change with the other harness in one click.
-            </p>
-            <p className="subscription-note">Uses your existing Claude and Codex subscriptions.</p>
-            <p className="preview-note">Install the early developer preview, or grab the source and hack it into whatever you need.</p>
+      <main>
+        <header className="masthead">
+          <div className="lockup">
+            <StereoCharacter size={46} motion="idle" label="" />
+            <span>stereo</span>
+          </div>
+          <h1>
+            One agent writes.<br />
+            The other reviews.<br />
+            <em>You commit.</em>
+          </h1>
+          <p className="masthead-sub">
+            Stereo is a free, open-source desktop app for Claude Code and Codex.
+          </p>
+          <div className="get">
+            <p className="preview-note">Early developer preview</p>
             <InstallCommand />
-            <div className="hero-actions">
+            <div className="get-row">
               <a className="source-link" href={GITHUB_URL} target="_blank" rel="noreferrer">
                 <GitHubIcon /> Get the source <ArrowIcon />
               </a>
-              <span>macOS + Windows · runs locally</span>
+              <span className="platforms">macOS · Windows · Linux</span>
             </div>
           </div>
-          <div className="hero-product">
-            <div className="product-halo" aria-hidden="true" />
-            <ProductWindow />
+        </header>
+
+        <section className="preview" aria-label="App preview">
+          <ProductWindow />
+        </section>
+
+        <section className="ledger" aria-label="What Stereo does and never does">
+          <div className="ledger-col">
+            <h2>What it does</h2>
+            <ul>
+              {doesItems.map((item, index) => <li key={index}>{item}</li>)}
+            </ul>
+          </div>
+          <div className="ledger-col never">
+            <h2>What it never does</h2>
+            <ul>
+              {neverItems.map((item, index) => <li key={index}>{item}</li>)}
+            </ul>
           </div>
         </section>
 
-        <section className="why-section" id="why">
-          <div className="why-intro">
-            <p>We built Stereo because we like programming in a <em>Commit Loop</em>: use Stereo to build one scoped change, review it in your IDE, commit it, and start again from a clean working tree.</p>
-          </div>
+        <section className="loop-section" aria-label="The loop Stereo is built for">
+          <p className="loop-intro">
+            We built Stereo around one loop: start clean, build a change, read the diff, commit. <em>Repeat.</em>
+          </p>
           <CommitLoop />
-        </section>
-
-        <section className="features-section" id="features">
-          <div className="features-heading">
-            <div>
-              <div className="section-kicker">What Stereo adds</div>
-              <h2>Built above the harnesses,<br />not instead of them.</h2>
-            </div>
-            <p>Stereo uses the native CLI subscriptions already signed in on your computer. It gives them one durable interface—and gives you capabilities that live between them.</p>
-          </div>
-
-          <div className="features-grid">
-            {features.map((feature) => (
-              <article className="feature-card" key={feature.number}>
-                <span className="feature-number">{feature.number}</span>
-                <h3>{feature.title}</h3>
-                <p>{feature.copy}</p>
-                <small>{feature.detail}</small>
-              </article>
-            ))}
-          </div>
-
-          <div className="preview-cta">
-            <div className="cta-character">
-              <StereoCharacter size={112} color="#FFFAF1" motion="wink" label="Stereo" />
-            </div>
-            <div className="cta-copy">
-              <span>Open source developer preview</span>
-              <h3>Bring both labs into Stereo.</h3>
-              <p>Install from the command line, or inspect every line and run it from source.</p>
-            </div>
-            <div className="cta-actions">
-              <InstallCommand compact />
-              <a className="source-link" href={GITHUB_URL} target="_blank" rel="noreferrer">
-                <GitHubIcon /> View on GitHub <ArrowIcon />
-              </a>
-            </div>
-          </div>
         </section>
       </main>
 
       <footer>
-        <a className="footer-brand" href="#top">
-          <img src={`${import.meta.env.BASE_URL}mark-ink.svg`} alt="" />
-          <span>stereo</span>
-        </a>
-        <p>A shell for coding harnesses.</p>
-        <a href={GITHUB_URL} target="_blank" rel="noreferrer">GitHub</a>
+        <p>
+          MIT licensed · Claude is a product of Anthropic and Codex of OpenAI · Stereo is independent of both.
+        </p>
       </footer>
     </div>
   );
