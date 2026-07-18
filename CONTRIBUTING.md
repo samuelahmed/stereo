@@ -59,6 +59,25 @@ Before opening a pull request:
 
 Please do not include unrelated formatting or generated-file churn.
 
+## Commit messages
+
+Use a short, imperative [Conventional Commit](https://www.conventionalcommits.org/)
+subject:
+
+```text
+feat: add thread search
+fix: preserve history after an interrupted write
+docs: explain the review handoff
+refactor: separate project discovery from storage
+test: cover partial transcript recovery
+chore: update repository metadata
+```
+
+The common prefixes are `feat`, `fix`, `docs`, `refactor`, `test`, `build`, `ci`,
+and `chore`. Use `fix:` for bugs rather than introducing a separate `bug:` prefix.
+Keep the subject lowercase, omit the final period, and describe the outcome rather
+than the implementation steps.
+
 ## Releases
 
 Releases are maintainer-only. From a clean `main` branch that exactly matches
