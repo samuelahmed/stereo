@@ -69,22 +69,46 @@ if [ "$platform" = "darwin" ]; then
   source_app="$staging/Stereo.app"
   [ -d "$source_app" ] || fail "the macOS release did not contain Stereo.app"
 
-  install_root="$HOME/Applications"
+  install_root="${STEREO_INSTALL_ROOT:-/Applications}"
   destination="$install_root/Stereo.app"
   backup="$install_root/.Stereo.previous.$$"
-  mkdir -p "$install_root"
+  legacy_destination="$HOME/Applications/Stereo.app"
+
+  use_sudo=false
+  if [ ! -w "$install_root" ]; then
+    need sudo
+    printf 'Stereo needs administrator permission to install in %s.\n' "$install_root"
+    sudo -v || fail "administrator permission is required to install in $install_root"
+    use_sudo=true
+  fi
+
+  install_move() {
+    if [ "$use_sudo" = true ]; then sudo mv "$1" "$2"; else mv "$1" "$2"; fi
+  }
+
+  install_remove() {
+    if [ "$use_sudo" = true ]; then sudo rm -rf "$1"; else rm -rf "$1"; fi
+  }
 
   had_previous=false
   if [ -e "$destination" ]; then
-    mv "$destination" "$backup"
+    install_move "$destination" "$backup"
     had_previous=true
   fi
 
-  if mv "$source_app" "$destination"; then
-    if [ "$had_previous" = true ]; then rm -rf "$backup"; fi
+  if install_move "$source_app" "$destination"; then
+    if [ "$had_previous" = true ]; then install_remove "$backup"; fi
   else
-    if [ "$had_previous" = true ]; then mv "$backup" "$destination"; fi
+    if [ "$had_previous" = true ]; then install_move "$backup" "$destination"; fi
     fail "could not replace the existing application"
+  fi
+
+  if [ "$legacy_destination" != "$destination" ] && [ -e "$legacy_destination" ]; then
+    if rm -rf "$legacy_destination"; then
+      printf 'Removed the previous user-local installation at %s\n' "$legacy_destination"
+    else
+      printf 'stereo: could not remove the previous installation at %s\n' "$legacy_destination" >&2
+    fi
   fi
 
   printf 'Installed Stereo at %s\n' "$destination"

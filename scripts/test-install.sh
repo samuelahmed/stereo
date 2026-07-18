@@ -26,7 +26,11 @@ case "$(uname -s)" in
     (cd "$fixture" && zip -qry "$release_directory/$asset" Stereo.app)
     printf '#!/bin/sh\nexit 0\n' > "$fake_bin/open"
     chmod +x "$fake_bin/open"
-    installed_marker="$fake_home/Applications/Stereo.app/Contents/installer-test.txt"
+    mac_install_root="$test_root/Applications"
+    mkdir -p "$mac_install_root"
+    mkdir -p "$fake_home/Applications/Stereo.app"
+    installed_marker="$mac_install_root/Stereo.app/Contents/installer-test.txt"
+    legacy_app="$fake_home/Applications/Stereo.app"
     ;;
   Linux)
     case "$(uname -m)" in
@@ -71,11 +75,13 @@ printf '%s\n' \
 chmod +x "$fake_bin/curl"
 
 STEREO_TEST_RELEASE="$release_directory" \
+  STEREO_INSTALL_ROOT="${mac_install_root:-}" \
   HOME="$fake_home" \
   PATH="$fake_bin:$PATH" \
   TMPDIR="$test_root" \
   sh "$repository_root/apps/web/public/install"
 
 test -f "$installed_marker"
+if [ "$(uname -s)" = "Darwin" ]; then test ! -e "$legacy_app"; fi
 if [ "$(uname -s)" = "Linux" ]; then test -L "$fake_home/.local/bin/stereo"; fi
 printf 'Installer behavior test passed for %s %s.\n' "$(uname -s)" "$architecture"

@@ -33,8 +33,9 @@ Windows PowerShell:
 curl.exe -fsSL https://getstereo.dev/install.ps1 | Out-String | iex
 ```
 
-The installers select the correct release artifact, verify its SHA-256 checksum,
-and install inside your user account without `sudo`. You can inspect the
+The installers select the correct release artifact and verify its SHA-256
+checksum. On macOS, Stereo installs in `/Applications` and asks for administrator
+permission only when that directory is not writable. You can inspect the
 [POSIX installer](apps/web/public/install) or
 [PowerShell installer](apps/web/public/install.ps1) before running it.
 
