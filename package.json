@@ -1,7 +1,7 @@
 {
   "name": "stereo",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A desktop shell for Claude and Codex.",
   "license": "MIT",
   "homepage": "https://getstereo.dev",

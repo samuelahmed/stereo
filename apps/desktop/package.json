@@ -1,7 +1,7 @@
 {
   "name": "@stereo/desktop",
   "productName": "Stereo",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Stereo desktop application.",
   "license": "MIT",
