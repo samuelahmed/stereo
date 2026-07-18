@@ -35,6 +35,8 @@ branding/stereo/
     tray-template.svg      monochrome menu-bar source
     lockup-primary.svg     blue character + lowercase wordmark
     lockup-ink.svg         monochrome lockup
+    og-image.svg           editable 1200×630 social share card
+    og-image.png           crawler-compatible social share card
   motion/
     idle.svg               gentle bounce, eye movement, occasional wink
     working.svg            quicker bounce, steps, looking, wink, and speech

@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title description">
+  <title id="title">Stereo</title>
+  <desc id="description">The blue Stereo character beside the Stereo wordmark on a cream background.</desc>
+  <defs>
+    <mask id="stereo-og-mark" maskUnits="userSpaceOnUse" x="0" y="0" width="80" height="80">
+      <g fill="#fff">
+        <path d="M28 16h24v2h4v10h-4v-8H28v8h-4V18h4z"/>
+        <rect x="10" y="26" width="60" height="26"/>
+        <rect x="22" y="52" width="8" height="12"/>
+        <rect x="50" y="52" width="8" height="12"/>
+      </g>
+      <g fill="#000">
+        <path d="M18 32h12v2h2v10h-2v2H18v-2h-2V34h2zM50 32h12v2h2v10h-2v2H50v-2h-2V34h2z"/>
+      </g>
+      <g fill="#fff">
+        <rect x="22" y="37" width="6" height="6"/>
+        <rect x="54" y="37" width="6" height="6"/>
+      </g>
+      <rect x="28" y="48" width="24" height="2" fill="#000"/>
+    </mask>
+  </defs>
+
+  <rect width="1200" height="630" fill="#FFFAF1"/>
+  <g transform="translate(178 155) scale(4)">
+    <rect width="80" height="80" fill="#3B78D8" mask="url(#stereo-og-mark)"/>
+  </g>
+  <text
+    x="550"
+    y="366"
+    fill="#24212A"
+    font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    font-size="146"
+    font-weight="650"
+    letter-spacing="-7"
+  >stereo</text>
+</svg>

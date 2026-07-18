@@ -18,5 +18,9 @@
     "idle.svg",
     "working.svg",
     "wink.svg"
+  ],
+  "socialAssets": [
+    "assets/og-image.svg",
+    "assets/og-image.png"
   ]
 }
