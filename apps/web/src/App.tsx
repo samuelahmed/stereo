@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { StereoCharacter } from "../../../branding/stereo/component/StereoCharacter";
 
 const INSTALL_COMMAND = "curl -fsSL https://getstereo.dev/install | sh";
@@ -140,6 +141,161 @@ function ProductWindow() {
   );
 }
 
+const loopStories = [
+  {
+    label: "Clean",
+    surface: "Clean",
+    title: "Start with a clean working tree.",
+    copy: "Now the boundary is obvious. You know exactly what belongs to the next change, anything can be reverted without archaeology, and the repo is ready to go.",
+    extra: null,
+    detail: "git status --short  →  no output",
+  },
+  {
+    label: "Build",
+    surface: "Build",
+    title: "Work in Stereo.",
+    copy: "Stereo is designed for this build step: use Claude Code, Codex, or both to complete one scoped change on one branch. Open as many conversations as the change needs; they all work against the same checkout.",
+    extra: "Fork a thread to the other lab when you want a different approach. Or use the built-in Review feature to hand the conversation and current changes to the other harness for a second set of eyes.",
+    detail: "one branch  ·  one scoped change  ·  multiple conversations",
+  },
+  {
+    label: "Review",
+    surface: "Review",
+    title: "Go back to your editor.",
+    copy: "Read the diff in whatever review tool you already use. Run the code and your existing tests until you understand and trust the change.",
+    extra: null,
+    detail: "diff  ·  run  ·  test  ·  understand",
+  },
+  {
+    label: "Commit",
+    surface: "Commit",
+    title: "Commit however you already do.",
+    copy: "Keep what belongs, write the message, and commit from your IDE or CLI. The commit is the checkpoint; the clean tree means the next loop can begin.",
+    extra: null,
+    detail: "git add  ·  git commit  ·  clean",
+  },
+];
+
+function normalizeLoopIndex(index: number) {
+  return ((index % loopStories.length) + loopStories.length) % loopStories.length;
+}
+
+function CommitLoop() {
+  const [active, setActive] = useState(1);
+  const [rotation, setRotation] = useState(-90);
+  const [dragging, setDragging] = useState(false);
+  const [characterReaction, setCharacterReaction] = useState(0);
+  const rotationRef = useRef(-90);
+  const dragRef = useRef<{ angle: number; rotation: number } | null>(null);
+
+  const setLoopRotation = (next: number) => {
+    rotationRef.current = next;
+    setRotation(next);
+  };
+
+  const moveBy = (amount: number) => {
+    setCharacterReaction((reaction) => reaction + 1);
+    setActive((current) => normalizeLoopIndex(current + amount));
+    setLoopRotation(rotationRef.current - amount * 90);
+  };
+
+  const moveTo = (index: number) => {
+    setCharacterReaction((reaction) => reaction + 1);
+    let distance = index - active;
+    if (distance > 2) distance -= loopStories.length;
+    if (distance < -2) distance += loopStories.length;
+    setActive(index);
+    setLoopRotation(rotationRef.current - distance * 90);
+  };
+
+  const pointerAngle = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    return Math.atan2(event.clientY - bounds.top - bounds.height / 2, event.clientX - bounds.left - bounds.width / 2) * 180 / Math.PI;
+  };
+
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest("button")) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = { angle: pointerAngle(event), rotation: rotationRef.current };
+    setDragging(true);
+  };
+
+  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return;
+    let delta = pointerAngle(event) - dragRef.current.angle;
+    if (delta > 180) delta -= 360;
+    if (delta < -180) delta += 360;
+    setLoopRotation(dragRef.current.rotation + delta);
+  };
+
+  const finishDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    const step = Math.round(rotationRef.current / 90);
+    const snapped = step * 90;
+    dragRef.current = null;
+    setDragging(false);
+    setCharacterReaction((reaction) => reaction + 1);
+    setLoopRotation(snapped);
+    setActive(normalizeLoopIndex(-step));
+  };
+
+  const story = loopStories[active];
+
+  return (
+    <div className="loop-experience">
+      <div className="loop-dial-column">
+        <div
+          className={`loop-dial ${dragging ? "dragging" : ""}`}
+          role="group"
+          aria-label="Interactive commit loop. Drag the wheel, choose a step, or use the arrow keys."
+          tabIndex={0}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowRight" || event.key === "ArrowDown") { event.preventDefault(); moveBy(1); }
+            if (event.key === "ArrowLeft" || event.key === "ArrowUp") { event.preventDefault(); moveBy(-1); }
+          }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={finishDrag}
+          onPointerCancel={finishDrag}
+        >
+          <div className="loop-ring" aria-hidden="true"><i /><i /><i /><i /></div>
+          <div className="loop-rotor" style={{ transform: `rotate(${rotation}deg)` }}>
+            {loopStories.map((item, index) => {
+              const angle = index * 90;
+              const style = {
+                "--node-angle": `${angle}deg`,
+                "--upright-angle": `${-(angle + rotation)}deg`,
+              } as CSSProperties;
+              return (
+                <button className={`loop-node ${index === active ? "active" : ""}`} style={style} type="button" key={item.label} onClick={() => moveTo(index)} aria-pressed={index === active}>
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="loop-core" aria-hidden="true">
+            <div key={characterReaction} className={`loop-core-character ${characterReaction > 0 ? "reacting" : ""}`}>
+              <StereoCharacter size={82} motion="idle" label="" />
+            </div>
+            <span>Commit loop</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="loop-story" aria-live="polite">
+        <div className="story-surface">{story.surface}</div>
+        <div className="story-copy" key={story.label}>
+          <h3>{story.title}</h3>
+          <p>{story.copy}</p>
+          {story.extra && <p>{story.extra}</p>}
+          <code>{story.detail}</code>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const features = [
   {
     number: "01",
@@ -227,51 +383,10 @@ export function App() {
         </section>
 
         <section className="why-section" id="why">
-          <div className="why-heading">
-            <div className="section-kicker">Why we built Stereo</div>
-            <h2>We like a clear development tempo.</h2>
+          <div className="why-intro">
+            <p>We built Stereo because we like programming in a <em>Commit Loop</em>: use Stereo to build one scoped change, review it in your IDE, commit it, and start again from a clean working tree.</p>
           </div>
-          <div className="why-copy">
-            <p>We built Stereo around the way we like to work: start clean, use agents to make one focused change, understand it in the tools we already trust, commit it ourselves, and start clean again.</p>
-            <p>Stereo handles the agent conversations. Your editor, tests, and Git remain the places where you decide what is good enough to keep.</p>
-          </div>
-          <div className="workflow-strip" aria-label="Begin with a clean working tree, build in Stereo, review in your editor, commit with Git, and begin again with a clean working tree">
-            <div className="workflow-boundary">
-              <span>Begin</span>
-              <strong>Clean</strong>
-              <small>working tree</small>
-            </div>
-            <ol className="workflow-steps">
-              <li>
-                <div className="workflow-meta"><span>01 · Build</span><b>Stereo</b></div>
-                <h3>Work with the agents.</h3>
-                <p>Use Claude Code, Codex, or both against the same real checkout.</p>
-                <code>claude code · codex</code>
-              </li>
-              <li>
-                <div className="workflow-meta"><span>02 · Review</span><b>Your editor</b></div>
-                <h3>Understand the change.</h3>
-                <p>Read the diff in the editor you know and run the tests you already trust.</p>
-                <code>diff · test · run</code>
-              </li>
-              <li>
-                <div className="workflow-meta"><span>03 · Commit</span><b>Git</b></div>
-                <h3>Make the checkpoint.</h3>
-                <p>Commit from your IDE or CLI, however you already work.</p>
-                <code>git add · git commit</code>
-              </li>
-            </ol>
-            <div className="workflow-boundary end">
-              <span>Next</span>
-              <strong>Clean</strong>
-              <small>working tree</small>
-            </div>
-          </div>
-          <div className="workflow-caption">
-            <span>Multiple conversations</span>
-            <i aria-hidden="true" />
-            <strong>One real working tree</strong>
-          </div>
+          <CommitLoop />
         </section>
 
         <section className="features-section" id="features">
