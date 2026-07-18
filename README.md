@@ -30,7 +30,7 @@ curl -fsSL https://getstereo.dev/install | sh
 Windows PowerShell:
 
 ```powershell
-irm https://getstereo.dev/install.ps1 | iex
+curl.exe -fsSL https://getstereo.dev/install.ps1 | Out-String | iex
 ```
 
 The installers select the correct release artifact, verify its SHA-256 checksum,

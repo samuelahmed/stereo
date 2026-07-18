@@ -3,7 +3,7 @@ import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { StereoCharacter } from "../../../branding/stereo/component/StereoCharacter";
 
 const POSIX_INSTALL_COMMAND = "curl -fsSL https://getstereo.dev/install | sh";
-const WINDOWS_INSTALL_COMMAND = "irm https://getstereo.dev/install.ps1 | iex";
+const WINDOWS_INSTALL_COMMAND = "curl.exe -fsSL https://getstereo.dev/install.ps1 | Out-String | iex";
 const GITHUB_URL = "https://github.com/samuelahmed/stereo";
 
 function ArrowIcon() {
