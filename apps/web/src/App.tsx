@@ -143,9 +143,9 @@ function ProductWindow() {
 const features = [
   {
     number: "01",
-    title: "Every harness, one home.",
+    title: "Claude Code & Codex, one home.",
     copy: "Run Claude Code and Codex against any repository without changing the native tools underneath.",
-    detail: "More harnesses can join the same shell.",
+    detail: "Two native harnesses. One local interface.",
   },
   {
     number: "02",
@@ -206,22 +206,18 @@ export function App() {
       <main id="main">
         <section className="hero" id="top">
           <div className="hero-copy">
-            <div className="eyebrow"><span /> Early developer preview</div>
-            <h1>Every coding harness.<br /><em>One window.</em></h1>
+            <h1>Claude Code & Codex.<br /><em>One window.</em></h1>
             <p className="hero-lede">
-              Stereo is a shell for coding harnesses. Run every frontier harness against your repos, keep permanent vendor-neutral history, and use gestures no single harness can do.
+              Stereo is a desktop shell for coding harnesses. Run Claude Code and Codex against your repos, keep permanent vendor-neutral history, and review a change with the other harness in one click.
             </p>
-            <div className="harness-row" aria-label="Currently supports Claude Code and Codex">
-              <span><i className="claude-dot" /> Claude Code</span>
-              <span><i className="codex-dot" /> Codex</span>
-              <small>More to come</small>
-            </div>
+            <p className="subscription-note">Uses your existing Claude Code and Codex subscriptions.</p>
+            <p className="preview-note">Install the early developer preview, or grab the source and hack it into whatever you need.</p>
             <InstallCommand />
             <div className="hero-actions">
               <a className="source-link" href={GITHUB_URL} target="_blank" rel="noreferrer">
-                <GitHubIcon /> Read the source <ArrowIcon />
+                <GitHubIcon /> Get the source <ArrowIcon />
               </a>
-              <span>macOS preview · runs locally</span>
+              <span>macOS + Windows · runs locally</span>
             </div>
           </div>
           <div className="hero-product">
@@ -236,24 +232,45 @@ export function App() {
             <h2>We like a clear development tempo.</h2>
           </div>
           <div className="why-copy">
-            <p>Start clean. Work with as many conversations as the change needs. Understand the result, make one coherent commit, and start clean again.</p>
-            <p>Stereo keeps the harnesses, context, and review gestures close while your editor and Git stay exactly where they belong.</p>
+            <p>We built Stereo around the way we like to work: start clean, use agents to make one focused change, understand it in the tools we already trust, commit it ourselves, and start clean again.</p>
+            <p>Stereo handles the agent conversations. Your editor, tests, and Git remain the places where you decide what is good enough to keep.</p>
           </div>
-          <div className="loop-visual" aria-label="Clean working tree, Build, Review, Commit, Clean working tree">
-            <div className="clean-node"><CheckIcon /><span>Working tree</span><strong>Clean</strong></div>
-            <i className="loop-arrow" aria-hidden="true" />
-            <div className="loop-step"><small>01</small><strong>Build</strong></div>
-            <i className="loop-arrow" aria-hidden="true" />
-            <div className="loop-step"><small>02</small><strong>Review</strong></div>
-            <i className="loop-arrow" aria-hidden="true" />
-            <div className="loop-step"><small>03</small><strong>Commit</strong></div>
-            <i className="loop-arrow" aria-hidden="true" />
-            <div className="clean-node"><CheckIcon /><span>Working tree</span><strong>Clean</strong></div>
+          <div className="workflow-strip" aria-label="Begin with a clean working tree, build in Stereo, review in your editor, commit with Git, and begin again with a clean working tree">
+            <div className="workflow-boundary">
+              <span>Begin</span>
+              <strong>Clean</strong>
+              <small>working tree</small>
+            </div>
+            <ol className="workflow-steps">
+              <li>
+                <div className="workflow-meta"><span>01 · Build</span><b>Stereo</b></div>
+                <h3>Work with the agents.</h3>
+                <p>Use Claude Code, Codex, or both against the same real checkout.</p>
+                <code>claude code · codex</code>
+              </li>
+              <li>
+                <div className="workflow-meta"><span>02 · Review</span><b>Your editor</b></div>
+                <h3>Understand the change.</h3>
+                <p>Read the diff in the editor you know and run the tests you already trust.</p>
+                <code>diff · test · run</code>
+              </li>
+              <li>
+                <div className="workflow-meta"><span>03 · Commit</span><b>Git</b></div>
+                <h3>Make the checkpoint.</h3>
+                <p>Commit from your IDE or CLI, however you already work.</p>
+                <code>git add · git commit</code>
+              </li>
+            </ol>
+            <div className="workflow-boundary end">
+              <span>Next</span>
+              <strong>Clean</strong>
+              <small>working tree</small>
+            </div>
           </div>
-          <div className="loop-note">
-            <StereoCharacter size={62} motion="working" label="Stereo" />
-            <span>Multiple conversations.</span>
-            <strong>One real working tree.</strong>
+          <div className="workflow-caption">
+            <span>Multiple conversations</span>
+            <i aria-hidden="true" />
+            <strong>One real working tree</strong>
           </div>
         </section>
 
@@ -283,7 +300,7 @@ export function App() {
             </div>
             <div className="cta-copy">
               <span>Open source developer preview</span>
-              <h3>Bring every harness into Stereo.</h3>
+              <h3>Bring both labs into Stereo.</h3>
               <p>Install from the command line, or inspect every line and run it from source.</p>
             </div>
             <div className="cta-actions">
