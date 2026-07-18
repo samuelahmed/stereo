@@ -295,7 +295,7 @@ function createMock(): StereoApi {
       t.forkedFrom = { threadId: source.id, title: source.title };
       emit(t.id, {
         type: "briefing",
-        text: "You are taking over an ongoing coding session…\n\n## User\nFix the flaky session test\n\n## Claude Code\nStubbed the clock, awaited the refresh…",
+        text: "You are taking over an ongoing coding session…\n\n## User\nFix the flaky session test\n\n## Claude\nStubbed the clock, awaited the refresh…",
         trimmedEvents: 0,
         approxTokens: 1840,
       });

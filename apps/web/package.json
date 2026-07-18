@@ -2,6 +2,8 @@
   "name": "@stereo/web",
   "version": "0.1.0",
   "private": true,
+  "description": "The getstereo.dev product site.",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -25,7 +25,7 @@ export function NewThread({ cwd, recentDirs, agent, permission, agents, onPickDi
         <StereoBrandCharacter motion="none" className="hero-character" />
         <div className="hero-title">Both frontier labs. One window.</div>
         <div className="hero-sub">
-          A thread is a terminal session that never dies — it runs Claude Code or Codex in your repo, on your
+          A thread is a terminal session that never dies — it runs Claude or Codex in your repo, on your
           subscription. Fork any thread to the other lab. Review before you commit.
         </div>
         <div className="new-thread-config">

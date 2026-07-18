@@ -1,90 +1,145 @@
-# ◐ Stereo
+<p align="center">
+  <img src="branding/stereo/assets/lockup-primary.svg" alt="Stereo" width="260">
+</p>
 
-**Every AI coding tool is mono. Stereo runs both frontier labs in one window.**
+<p align="center"><strong>Claude &amp; Codex. One window.</strong></p>
 
-Stereo replaces the terminal in the loop you already run: prompt the agent, read the
-diff in your editor, write your own commit message, commit, next task. A thread in
-Stereo is a terminal session that never dies — it runs **Claude Code** or **Codex**
-(on the subscriptions you already pay for) in any repo directory, edits your working
-tree in place, and streams everything the agent does.
+<p align="center">
+  <a href="https://getstereo.dev">Website</a> ·
+  <a href="https://github.com/samuelahmed/stereo/releases">Releases</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a> ·
+  <a href="LICENSE">MIT License</a>
+</p>
 
-## What it does
+Stereo is a desktop shell for coding harnesses. Run Claude and Codex against
+your repos, keep durable vendor-neutral history, and ask the other harness to
+review a change in one click. Stereo uses the CLI subscriptions already signed in
+on your computer.
 
-- **Threads over both CLIs** — token-level streaming, live tool lines, real markdown.
-  Esc interrupts; the session survives; send a message to continue.
-- **Fork across labs** — every thread is stored as a vendor-neutral transcript, so any
-  thread can be duplicated to the other model with a full context handoff (capped at
-  ~200k tokens; trims are always visible, never silent).
-- **Pre-commit review** — one click runs Claude or Codex read-only over the current
-  uncommitted diff; a follow-up can promote that same thread to write access after
-  one explicit confirmation.
-- **History forever** — every thread from both vendors, saved locally, browsable.
-- **Come back at the right moment** — optional native notifications and a local
-  sound when background work finishes, fails, or needs approval.
-- **Your workflow stays yours** — no worktrees, no generated commits, no merge UI.
-  Git is the undo button, your editor is the review surface, commits come from you.
+> Stereo is an early developer preview. The interface, storage format, and release
+> process will continue to evolve.
 
-## Architecture
+## Install
 
-```
-packages/core        engine, event-sourced store, briefing compiler, adapters
-  src/engine.ts        threads, turns, queueing, interrupt, fork/review
-  src/store.ts         threads.json + append-only JSONL transcript per thread
-  src/briefing.ts      one compiler, two callers: fork handoffs & session-loss resume
-  src/git.ts           read-only diff helpers (never touches the index)
-  src/adapters/        claude (Agent SDK, streaming + abort) · codex (exec --json, kill)
-apps/desktop         Electron + React
-  src/main             window, engine host, IPC
-  src/preload          window.stereo bridge
-  src/renderer         sidebar · thread view · composer · fork/review menus
-apps/web             getstereo.com landing site (Vite + React)
+macOS and Linux:
+
+```sh
+curl -fsSL https://getstereo.dev/install | sh
 ```
 
-The transcript is the canonical record; the CLIs' own session ids are only an
-accelerator for native resume. Stereo hard-strips API-key env vars so agents always
-run on the native CLI subscriptions already signed in on the computer.
+Windows PowerShell:
+
+```powershell
+irm https://getstereo.dev/install.ps1 | iex
+```
+
+The installers select the correct release artifact, verify its SHA-256 checksum,
+and install inside your user account without `sudo`. You can inspect the
+[POSIX installer](apps/web/public/install) or
+[PowerShell installer](apps/web/public/install.ps1) before running it.
+
+macOS and Windows are the primary preview platforms. Linux builds are published
+but have received less real-world testing. The macOS preview is ad-hoc signed, not
+Apple-notarized; the command-line installation path does not silently change
+Gatekeeper or quarantine settings.
+
+### Requirements
+
+- Claude, Codex, or both installed and signed in through their native tools.
+- An active subscription for whichever harness you use.
+- A Git repository to work in.
+
+## What Stereo adds
+
+- **One place for both harnesses.** Run multiple Claude and Codex conversations
+  against the same repo and working tree.
+- **Vendor-neutral history.** Stereo stores a local transcript independent of either
+  harness's native session format.
+- **Cross-lab forks.** Duplicate a thread to the other harness with a compiled context
+  handoff, while keeping any trimming visible.
+- **A built-in review feature.** Send the current context and uncommitted change to
+  either harness for another set of eyes. Reviews begin without write access; a
+  follow-up can be promoted to a normal working thread with your approval.
+- **Your existing Git workflow.** Stereo does not create worktrees, commits, or a
+  merge layer. Agents edit the branch you opened; you review and commit normally.
+- **Local completion signals.** Optional native notifications and sounds tell you
+  when background work finishes, fails, or needs approval.
+
+## The commit loop
+
+We built Stereo because we like programming in a small loop:
+
+```text
+clean working tree → build in Stereo → review in your IDE → commit
+        ↑                                                   │
+        └──────────────── clean working tree ───────────────┘
+```
+
+One scoped change, one coherent commit, then a clean place to begin again. Stereo
+focuses on the build step: coordinating conversations, preserving their history,
+and making it easy to bring in a second harness when useful. It is one workflow,
+not a claim that every project should work this way.
+
+## Local data and trust
+
+Stereo has no account or hosted transcript service. Settings, projects, and
+conversation history are stored in Electron's application-data directory on your
+computer. Claude and Codex still communicate with their respective vendor
+services under the subscriptions you already use.
+
+Coding harnesses can read and modify files or execute commands according to the
+access mode you choose. Treat an agent session with the same care as a terminal
+session, review changes before committing, and report security issues privately as
+described in [SECURITY.md](SECURITY.md).
 
 ## Development
 
+Stereo is a pnpm workspace using Electron, React, and TypeScript. Development
+requires Node.js 22 and pnpm 11.
+
 ```sh
-pnpm install
-pnpm dev     # electron-vite dev, watches main + renderer
-pnpm web     # landing site at http://localhost:4173
-pnpm stereo  # build once, launch the Electron app, no file watcher
+pnpm install --frozen-lockfile
+pnpm dev        # Electron development mode with watchers
+pnpm web        # getstereo.dev locally on http://localhost:4173
+pnpm stereo     # build once and launch the desktop app
 pnpm typecheck
 pnpm build
+pnpm check      # typecheck + production builds
 ```
 
-Type checking and production builds run in CI on macOS, Windows, and Linux.
-The copied native-session command uses POSIX shell syntax on macOS/Linux and
-PowerShell syntax on Windows.
-
-## Install and release
-
-The website serves a stable installer while immutable application archives live
-on GitHub Releases:
+On macOS and Linux, the installer behavior test can also be run directly:
 
 ```sh
-curl -fsSL https://getstereo.com/install | sh
+sh scripts/test-install.sh
 ```
 
-Windows visitors receive the PowerShell equivalent from the website. Both
-installers select the current platform artifact, verify it against the release's
-`SHA256SUMS`, and replace an existing installation only after extraction succeeds.
+Opening `http://localhost:5175` in a plain browser displays the renderer's design
+mock without launching agents or spending tokens. The real engine runs only inside
+Electron.
 
-Ordinary pushes run cross-platform checks but do not replace the downloadable
-application. To publish a tested release from a clean, up-to-date `main` branch:
+## Repository map
 
-```sh
-pnpm release 0.1.0
+```text
+packages/core      engine, persistence, briefing compiler, Git helpers, adapters
+apps/desktop       Electron main/preload processes and React renderer
+apps/web           getstereo.dev and the stable installer endpoints
+branding/stereo    generated identity assets, motion, tokens, and React character
 ```
 
-The release helper aligns every workspace version, runs all checks, creates an
-annotated version tag, and pushes the commit and tag atomically. The tag triggers
-the release workflow, whose final job publishes the release only after every
-platform package succeeds. Do not mark developer-preview releases as GitHub
-prereleases: the installers intentionally use GitHub's stable `latest/download`
-asset URLs.
+The transcript is Stereo's canonical conversation record. Native Claude and
+Codex session identifiers are used only to accelerate resume when available.
 
-Opening `http://localhost:5175` in a plain browser shows a design-mode mock (no real
-agents, no tokens spent). The real engine only runs inside the Electron shell.
+## Contributing
+
+Bug reports, focused pull requests, and experiments are welcome. Start with
+[CONTRIBUTING.md](CONTRIBUTING.md) and open an issue before investing in a large
+change so the direction can be aligned early.
+
+## License
+
+Stereo's own source code and brand assets are available under the
+[MIT License](LICENSE). Bundled and external dependencies remain under their own
+terms; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+Claude is a product of Anthropic, and Codex is a product of OpenAI. Stereo is
+an independent project and is not affiliated with or endorsed by either company.

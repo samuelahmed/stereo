@@ -2,13 +2,23 @@
   "name": "stereo",
   "private": true,
   "version": "0.1.0",
-  "description": "Every AI coding tool is mono. Stereo runs both frontier labs in one window.",
+  "description": "A desktop shell for Claude and Codex.",
+  "license": "MIT",
+  "homepage": "https://getstereo.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/samuelahmed/stereo.git"
+  },
+  "bugs": {
+    "url": "https://github.com/samuelahmed/stereo/issues"
+  },
   "scripts": {
     "dev": "pnpm --filter @stereo/desktop dev",
     "web": "pnpm --filter @stereo/web dev",
     "stereo": "pnpm --filter @stereo/desktop stereo",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
+    "check": "pnpm typecheck && pnpm build",
     "release": "node scripts/release.mjs"
   },
   "engines": {

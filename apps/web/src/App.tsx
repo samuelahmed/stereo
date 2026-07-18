@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { StereoCharacter } from "../../../branding/stereo/component/StereoCharacter";
 
-const POSIX_INSTALL_COMMAND = "curl -fsSL https://getstereo.com/install | sh";
-const WINDOWS_INSTALL_COMMAND = "irm https://getstereo.com/install.ps1 | iex";
+const POSIX_INSTALL_COMMAND = "curl -fsSL https://getstereo.dev/install | sh";
+const WINDOWS_INSTALL_COMMAND = "irm https://getstereo.dev/install.ps1 | iex";
 const GITHUB_URL = "https://github.com/samuelahmed/stereo";
 
 function ArrowIcon() {
@@ -85,7 +85,7 @@ function InstallCommand({ compact = false }: { compact?: boolean }) {
 
 function ProductWindow() {
   return (
-    <div className="product-window" role="img" aria-label="Stereo showing a Claude Code conversation in the Stereo repository">
+    <div className="product-window" role="img" aria-label="Stereo showing a Claude conversation in the Stereo repository">
       <div className="window-bar">
         <span className="traffic red" />
         <span className="traffic yellow" />
@@ -160,7 +160,7 @@ const loopStories = [
     label: "Build",
     surface: "Build",
     title: "Work in Stereo.",
-    copy: "Stereo is designed for this build step: use Claude Code, Codex, or both to complete one scoped change on one branch. Open as many conversations as the change needs; they all work against the same checkout.",
+    copy: "Stereo is designed for this build step: use Claude, Codex, or both to complete one scoped change on one branch. Open as many conversations as the change needs; they all work against the same checkout.",
     extra: "Fork a thread to the other lab when you want a different approach. Or use the built-in Review feature to hand the conversation and current changes to the other harness for a second set of eyes.",
     detail: "one branch  ·  one scoped change  ·  multiple conversations",
   },
@@ -305,8 +305,8 @@ function CommitLoop() {
 const features = [
   {
     number: "01",
-    title: "Claude Code & Codex, one home.",
-    copy: "Run Claude Code and Codex against any repository without changing the native tools underneath.",
+    title: "Claude & Codex, one home.",
+    copy: "Run Claude and Codex against any repository without changing the native tools underneath.",
     detail: "Two native harnesses. One local interface.",
   },
   {
@@ -323,9 +323,9 @@ const features = [
   },
   {
     number: "04",
-    title: "Review across labs.",
-    copy: "Ask either lab for a read-only review of the uncommitted change, then follow up in the same thread.",
-    detail: "One gesture built above both harnesses.",
+    title: "Built-in review feature.",
+    copy: "Send your context and uncommitted change to the other harness for a second set of eyes, then follow up in the same thread.",
+    detail: "One-click review built above both harnesses.",
   },
 ];
 
@@ -368,11 +368,11 @@ export function App() {
       <main id="main">
         <section className="hero" id="top">
           <div className="hero-copy">
-            <h1>Claude Code & Codex.<br /><em>One window.</em></h1>
+            <h1>Claude & Codex.<br /><em>One window.</em></h1>
             <p className="hero-lede">
-              Stereo is a desktop shell for coding harnesses. Run Claude Code and Codex against your repos, keep permanent vendor-neutral history, and review a change with the other harness in one click.
+              Stereo is a desktop shell for coding harnesses. Run Claude and Codex against your repos, keep permanent vendor-neutral history, and review a change with the other harness in one click.
             </p>
-            <p className="subscription-note">Uses your existing Claude Code and Codex subscriptions.</p>
+            <p className="subscription-note">Uses your existing Claude and Codex subscriptions.</p>
             <p className="preview-note">Install the early developer preview, or grab the source and hack it into whatever you need.</p>
             <InstallCommand />
             <div className="hero-actions">

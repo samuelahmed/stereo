@@ -196,9 +196,6 @@ function createWindow(): void {
   win = browserWindow;
 
   browserWindow.webContents.on("did-finish-load", () => {
-    void browserWindow.webContents
-      .executeJavaScript("typeof window.stereo")
-      .then((t: string) => console.log(`[stereo] engine bridge in renderer: ${t}`));
     if (pendingRevealThreadId) {
       browserWindow.webContents.send("stereo:reveal-thread", pendingRevealThreadId);
       pendingRevealThreadId = null;

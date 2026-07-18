@@ -3,6 +3,8 @@
   "productName": "Stereo",
   "version": "0.1.0",
   "private": true,
+  "description": "Stereo desktop application.",
+  "license": "MIT",
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {
@@ -53,11 +55,19 @@
       {
         "from": "resources/icon.png",
         "to": "icon.png"
+      },
+      {
+        "from": "../../LICENSE",
+        "to": "LICENSE.txt"
+      },
+      {
+        "from": "../../THIRD_PARTY_NOTICES.md",
+        "to": "THIRD_PARTY_NOTICES.md"
       }
     ]
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "latest",
+    "@anthropic-ai/claude-agent-sdk": "0.3.209",
     "@stereo/core": "workspace:*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

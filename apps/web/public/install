@@ -18,7 +18,7 @@ need curl
 case "$(uname -s)" in
   Darwin) platform="darwin" ;;
   Linux) platform="linux" ;;
-  *) fail "this installer supports macOS and Linux; use https://getstereo.com for Windows" ;;
+  *) fail "this installer supports macOS and Linux; use https://getstereo.dev for Windows" ;;
 esac
 
 case "$(uname -m)" in

@@ -11,7 +11,7 @@ importers:
   apps/desktop:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
-        specifier: latest
+        specifier: 0.3.209
         version: 0.3.209(@anthropic-ai/sdk@0.111.0(zod@4.4.3))(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(zod@4.4.3)
       '@stereo/core':
         specifier: workspace:*
@@ -82,7 +82,7 @@ importers:
   packages/core:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
-        specifier: latest
+        specifier: 0.3.209
         version: 0.3.209(@anthropic-ai/sdk@0.111.0(zod@4.4.3))(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(zod@4.4.3)
     devDependencies:
       '@types/node':
