@@ -21,6 +21,9 @@ function searchDirectories(env: NodeJS.ProcessEnv): string[] {
   if (process.platform === "win32") {
     add(env.APPDATA ? path.join(env.APPDATA, "npm") : undefined);
     add(env.LOCALAPPDATA ? path.join(env.LOCALAPPDATA, "Programs") : undefined);
+    // Claude's native Windows installer uses ~/.local/bin. GUI apps often
+    // inherit a stale PATH (or no shell PATH at all), so search it explicitly.
+    add(path.join(home, ".local", "bin"));
   } else {
     add(path.join(home, ".local", "bin"));
     add(path.join(home, ".npm-global", "bin"));
@@ -85,6 +88,12 @@ function executable(command: string, env: NodeJS.ProcessEnv): string {
     }
   }
   return command;
+}
+
+/** Resolve a command using the desktop app's augmented PATH. */
+export function resolveCommand(command: string, env: NodeJS.ProcessEnv = process.env): string | null {
+  const resolved = executable(command, optionsWithSearchPath({ env }).env ?? env);
+  return path.isAbsolute(resolved) ? resolved : null;
 }
 
 // cmd.exe metacharacters, per Rob van der Woude's list — the same set

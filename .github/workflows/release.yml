@@ -86,6 +86,13 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @stereo/desktop build
+      - name: Check Claude launch path is in production bundle
+        shell: bash
+        run: |
+          grep -q 'pathToClaudeCodeExecutable' apps/desktop/out/main/index.js || {
+            echo "Production bundle does not pass the native Claude CLI path to the Agent SDK." >&2
+            exit 1
+          }
       - name: Package application
         working-directory: apps/desktop
         env:

@@ -1,5 +1,8 @@
 import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import fs from "node:fs";
+import path from "node:path";
 import type { AgentSelection, PermissionMode } from "../types.js";
+import { resolveCommand } from "./command.js";
 import type { AgentAdapter, TurnCallbacks, TurnHandle, TurnOptions, TurnResult } from "./types.js";
 
 type Rec = Record<string, unknown>;
@@ -8,6 +11,17 @@ const rec = (v: unknown): Rec => (typeof v === "object" && v !== null ? (v as Re
 const READ_TOOLS = ["Read", "Glob", "Grep", "WebFetch", "WebSearch", "TodoWrite"];
 const WRITE_TOOLS = ["Edit", "Write", "Bash", "NotebookEdit"];
 const TOOLS = [...READ_TOOLS, ...WRITE_TOOLS];
+
+function claudeExecutable(): string | null {
+  const resolved = resolveCommand("claude");
+  if (!resolved || process.platform !== "win32" || !/\.(?:cmd|bat)$/i.test(resolved)) return resolved;
+
+  // The SDK launches the supplied path directly, so a Windows npm .cmd shim
+  // cannot be used here. Point it at the shim's adjacent JS entrypoint; the
+  // SDK recognizes .js and launches it with Node itself.
+  const npmEntrypoint = path.join(path.dirname(resolved), "node_modules", "@anthropic-ai", "claude-code", "cli.js");
+  return fs.existsSync(npmEntrypoint) ? npmEntrypoint : resolved;
+}
 
 /** Human-readable one-liner for a tool call — what Claude Code's own UI shows. */
 function toolDetail(name: string, input: unknown): string {
@@ -41,6 +55,13 @@ export function claudeAdapter(spec: AgentSelection, permission: PermissionMode):
   return {
     agent: "claude",
     startTurn(prompt: string, opts: TurnOptions, cb: TurnCallbacks): TurnHandle {
+      // Use the same native Claude CLI that Settings detects. The SDK's
+      // optional platform binary is not dependable once pnpm dependencies are
+      // packaged into asar, and could be omitted from a release artifact.
+      const executable = claudeExecutable();
+      if (!executable) {
+        throw new Error("Claude CLI was not found. Install Claude Code, then restart Stereo so it can detect the new executable.");
+      }
       const abort = new AbortController();
       let endInput: () => void = () => {};
       const inputDone = new Promise<void>((resolve) => {
@@ -83,6 +104,7 @@ export function claudeAdapter(spec: AgentSelection, permission: PermissionMode):
           } : {}),
           includePartialMessages: true,
           abortController: abort,
+          pathToClaudeCodeExecutable: executable,
           ...(spec.model ? { model: spec.model } : {}),
           ...(spec.effort ? { extraArgs: { effort: spec.effort } } : {}),
           ...(opts.resumeSessionId ? { resume: opts.resumeSessionId } : {}),
@@ -94,9 +116,12 @@ export function claudeAdapter(spec: AgentSelection, permission: PermissionMode):
 
       const done = (async (): Promise<TurnResult> => {
         let sessionId = opts.resumeSessionId;
+        let receivedMessage = false;
+        let receivedResult = false;
         try {
           for await (const raw of q) {
             const m = rec(raw);
+            receivedMessage = true;
 
             if (m.type === "system" && m.subtype === "init") {
               const sid = typeof m.session_id === "string" ? m.session_id : undefined;
@@ -169,6 +194,7 @@ export function claudeAdapter(spec: AgentSelection, permission: PermissionMode):
 
             // Usage is reported once, from the authoritative result message.
             if (m.type === "result") {
+              receivedResult = true;
               const usage = rec(m.usage);
               if (typeof usage.input_tokens === "number" || typeof usage.output_tokens === "number") {
                 cb.onUsage({
@@ -179,12 +205,26 @@ export function claudeAdapter(spec: AgentSelection, permission: PermissionMode):
               if (typeof m.session_id === "string") sessionId = m.session_id;
               // Turn is complete — release the input stream so the CLI exits.
               endInput();
+              if (m.subtype !== "success" || m.is_error === true) {
+                const errors = Array.isArray(m.errors)
+                  ? m.errors.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+                  : [];
+                const detail = errors.join("\n") || (typeof m.result === "string" ? m.result.trim() : "");
+                throw new Error(detail || `Claude turn failed (${String(m.subtype ?? "unknown error")})`);
+              }
             }
+          }
+          if (!receivedResult) {
+            throw new Error(receivedMessage
+              ? "Claude exited before completing the turn. Check that your Claude CLI is up to date and signed in."
+              : "Claude could not start. Check that your Claude CLI is installed, up to date, and signed in.");
           }
           return { sessionId, interrupted: interruptRequested };
         } catch (error) {
           if (sessionLost) return { sessionId: undefined, interrupted: false, sessionLost: true };
-          if (interruptRequested || abort.signal.aborted) return { sessionId, interrupted: true };
+          // Only an explicit user request is an interruption. Treating a
+          // closed/aborted SDK process as one hid launch and packaging errors.
+          if (interruptRequested) return { sessionId, interrupted: true };
           throw error;
         } finally {
           endInput();
