@@ -12,6 +12,13 @@ export const AGENT_MODELS: Record<AgentId, AgentModelInfo[]> = {
       defaultEffort: "high",
     },
     {
+      id: "claude-opus-5",
+      label: "Opus 5",
+      description: "Complex agentic coding and enterprise work",
+      efforts: [...EFFORTS],
+      defaultEffort: "high",
+    },
+    {
       id: "claude-opus-4-8",
       label: "Opus 4.8",
       description: "Complex reasoning and agentic coding",
