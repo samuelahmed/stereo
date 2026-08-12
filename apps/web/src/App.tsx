@@ -352,7 +352,7 @@ const doesItems = [
 const neverItems = [
   <>Never uses API keys or metered tokens. Sign in to each CLI and your existing plans cover everything.</>,
   <>Never makes a worktree, a branch, or a commit. Agents work on your checkout, and you ship it.</>,
-  <>Never asks for an account. No server, no telemetry, no hosted anything.</>,
+  <>Never asks for an account. No server, no hosted anything.</>,
   <>Never costs money. Free and MIT-licensed, and it stays that way.</>,
 ];
 
